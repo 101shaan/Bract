@@ -134,6 +134,29 @@ Prism adopts an **ownership/borrowing** scheme enforced at compile-time.
 
 Implementation uses stack allocation by default; `box` places objects on the heap managed by unique `Box<T>` owner.
 
+### 4.1 Lifetime Examples (Non-Normative)
+
+The compiler infers lifetimes but exposes them conceptually using the `'a` syntax familiar from Rust.  These examples are **illustrative only**; programmers rarely write explicit lifetimes.
+
+```prism
+// A reference that must outlive the returned reference.
+fn first<'a, T>(slice: &'a [T]) -> &'a T {
+    &slice[0]
+}
+
+struct Cache<'ctx> {
+    source: &'ctx str,
+    tokens: Vec<Token<'ctx>>, // each token borrows from `source`
+}
+
+// Mixing immutable and mutable borrows – compile-error
+let mut data = 0u32;
+let r1 = &data;      // shared
+let r2 = &mut data;  // ERROR: cannot borrow `data` as mutable because it is also borrowed as immutable
+```
+
+> **Guideline:** If the compiler cannot prove non-aliasing automatically, use `let tmp = value.clone();` to produce an owned copy with an independent lifetime.
+
 ---
 
 <a name="variables-bindings--constants"></a>
@@ -244,7 +267,7 @@ match msg {
 }
 ```
 
-Refutability rules follow Rust’s model.
+Refutability rules follow Rust's model.
 
 ---
 
@@ -264,20 +287,27 @@ Manifest file `Prism.toml` describes package metadata and dependencies.
 ## 12. Error Handling
 
 1. **Recoverable:** `Result<T, E>` enriched with `?` propagation operator.
-2. **Unrecoverable:** `panic!(msg)` aborts (no unwinding) to ensure zero-cost in the common path.  The panic strategy can be switched to _unwind_ via compiler flag for tests.
+2. **Unrecoverable:** `panic!(msg)` _aborts the process by default_; no stack-unwinding is performed so that the happy path pays **zero runtime cost**.  A project may opt into unwinding for test or FFI scenarios with `prismc --panic=unwind` or crate-level attribute `#![panic_strategy = "unwind"]`.
 3. **Option<T>** for presence/absence.
+4. **Best practice:** library APIs should prefer `Result` over `panic!` for errors that a caller can reasonably recover from.
 
 ---
 
 <a name="concurrency--atomics"></a>
 ## 13. Concurrency & Atomics
 
-Prism’s standard library provides:
+Prism's standard library provides:
 * `std::thread::spawn(closure) -> JoinHandle` – OS thread per call.
 * `channel()` – multi-producer, single-consumer MPSC channel.
 * `Mutex<T>`, `RwLock<T>`, `Atomic*` primitives.
 
-The memory model follows **C++20** _sequenced-before_ rules with `Acquire`, `Release`, and `AcqRel` orderings.  Data races are UB and rejected by the borrow checker in safe code.
+Safe concurrency is enforced by two _auto-traits_ (planned): **`Send`** for values that can be moved across threads and **`Sync`** for types whose references can be shared across threads.  The compiler automatically implements these for types that contain only `Send`/`Sync` members and no interior mutability violating the borrow rules.
+
+`Mutex<T>` temporarily yields a `&mut T` guard, ensuring that only one mutable reference exists even in the presence of aliasing across threads.  Channels transfer ownership of messages, so once a value is sent it may no longer be accessed by the sender.
+
+> **Note:** low-level atomics are `unsafe` to use incorrectly; prefer higher-level `Arc<Mutex<T>>` patterns where possible.
+
+The underlying memory ordering semantics follow **C++20**'s _sequenced-before_ model with `Acquire`, `Release`, and `AcqRel` orderings.  Data races are undefined behaviour and rejected in _safe_ Prism code.
 
 ---
 
@@ -300,11 +330,51 @@ Syntax: `#` `[` MetaItem `]` with nested key-value pairs.
 ## 15. Toolchain & Compilation Model
 
 * **Compiler:** `prismc` front-end → HIR → MIR → LLVM IR.
-* **Incremental:** fine-grained hashing invalidates only affected crates.
+* **Incremental:** a _fine-grained content hash_ is recorded for every item (function, impl, monomorphised instance).  When any upstream change occurs, only artifacts whose hash changes are re-optimized and re-linked, enabling sub-second rebuilds on large crates.
+  * Hash keys incorporate _generic parameter instantiation_ so that `Vec<u8>` and `Vec<u16>` are tracked independently.
+  * The dependency graph is persisted in `.prism/cache` and versioned by compiler revision; stale caches are ignored safely.
+  * A future milestone will add _cross-crate incremental_ once the on-disk format stabilizes.
 * **Optimization levels:** `-O0`, `-O2` (default), `-O3`, `-Os`.
 * **Linkage:** static by default, dynamic with `--shared`.
 * **Target triples** follow LLVM naming (`x86_64-pc-windows-msvc`).
 * **Build tool:** `prism build`, `prism test`, `prism run` (analogue to Cargo).
+
+### 15.1 Foreign-Function Interface (FFI)
+
+Prism can call into, and be called from, C with predictable layout and calling conventions:
+
+* `extern "C" fn` declares a function with the platform C ABI.
+* `#[repr(C)]` on `struct` and `enum` guarantees field order and tag layout compatible with C.
+* `unsafe extern "C" fn callback()` allows Prism functions to be passed to C libraries.
+
+All FFI boundaries are **`unsafe`** because the compiler cannot validate contracts on the other side.  Idiomatic Prism code wraps raw FFI handles in safe RAII abstractions:
+
+```prism
+#[repr(C)]
+pub struct FILE;
+
+extern "C" {
+    fn fopen(path: *const u8, mode: *const u8) -> *mut FILE;
+    fn fclose(f: *mut FILE) -> i32;
+}
+
+pub struct File(*mut FILE);
+
+impl File {
+    pub fn open(path: &CStr, mode: &CStr) -> Result<File, IoError> {
+        let ptr = unsafe { fopen(path.as_ptr(), mode.as_ptr()) };
+        if ptr.is_null() { Err(IoError::last()) } else { Ok(File(ptr)) }
+    }
+}
+
+impl Drop for File {
+    fn drop(&mut self) {
+        unsafe { fclose(self.0); }
+    }
+}
+```
+
+> **Caveat:** FFI functions must not unwind across the boundary; use `panic::catch_unwind` or compile with `--panic=abort`.
 
 ---
 
@@ -319,6 +389,16 @@ Syntax: `#` `[` MetaItem `]` with nested key-value pairs.
 | `test`    | unit-test harness |
 
 The **prelude** (`use std::prelude::*;`) is implicitly imported into every module.
+
+### 16.1 Embedded / `#![no_std]` Profile
+
+Code that targets bare-metal or kernel environments may disable the full standard library:
+
+```prism
+#![no_std]
+```
+
+This implicitly links only `core`; crates may opt into `alloc` by pulling in an allocator (`extern crate alloc;`).  The build tool passes the appropriate linker flags to avoid libc.
 
 ---
 
