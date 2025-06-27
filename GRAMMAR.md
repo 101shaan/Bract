@@ -27,6 +27,9 @@ floatLiteral      ::= decimalLiteral "." decimalLiteral [exponent]
 stringLiteral     ::= '"' … '"' | rawStringLiteral
 charLiteral       ::= "'" … "'"
 booleanLiteral    ::= "true" | "false"
+nullLiteral       ::= "null"
+literal           ::= integerLiteral | floatLiteral | stringLiteral |
+                     charLiteral | booleanLiteral | nullLiteral
 
 // (Full literal regexes appear in Appendix A of the spec.)
 
@@ -34,7 +37,7 @@ keyword           ::=
     "abort" | "break" | "box"   | "const" | "continue" | "do"    | "else" | "enum" |
     "extern"| "false"| "fn"    | "for"  | "if"   | "impl" | "in"   | "let"  |
     "loop"  | "match"| "mod"   | "move" | "mut"  | "pub"  | "return"|
-    "struct"| "true" | "type" | "use"  | "while"
+    "struct"| "true" | "type" | "use"  | "while" | "async" | "await"
 
 operator          ::= "::" | "->" | "=>" |
                      "&&" | "||" | "==" | "!=" | "<=" | ">=" |
@@ -105,11 +108,12 @@ UnaryOperator         ::= "!" | "~" | "&" | "*" | "-" | "+"
 CastExpr              ::= PostfixExpr [ "as" Type ]
 
 PostfixExpr           ::= PrimaryExpr { PostfixOp }
-PostfixOp             ::= CallOp | IndexOp | FieldOp | QuestionOp
+PostfixOp             ::= CallOp | IndexOp | FieldOp | QuestionOp | AwaitOp
 CallOp                ::= "(" [ ArgumentList ] ")"
 IndexOp               ::= "[" Expression "]"
 FieldOp               ::= "." identifier
 QuestionOp            ::= "?"                        //  null-assert / option unwrap
+AwaitOp               ::= "." "await"
 
 PrimaryExpr           ::= literal
                        | identifier
@@ -119,6 +123,9 @@ PrimaryExpr           ::= literal
                        | "box" Expression
                        | StructInit
                        | ClosureExpr
+                       | ArrayLiteral
+                       | RangeExpr
+                       | MacroCall
 
 PathExpr              ::= identifier { "::" identifier }
 StructInit            ::= PathExpr "{" FieldInitList "}"
@@ -126,6 +133,10 @@ FieldInitList         ::= FieldInit { "," FieldInit } [ "," ]
 FieldInit             ::= identifier ":" Expression | identifier   // shorthand
 
 ClosureExpr           ::= ["move"] "|" ParameterList? "|" Expression
+ArrayLiteral         ::= "[" [Expression { "," Expression }] "]"
+RangeExpr            ::= Expression ".." [Expression] | ".." Expression
+MacroCall            ::= identifier "!" "(" TokenStream? ")"
+TokenStream          ::= /* implementation-defined sequence of tokens */
 ArgumentList          ::= Expression { "," Expression } [ "," ]
 ParameterList         ::= Parameter { "," Parameter } [ "," ]
 Parameter             ::= Pattern [":" Type]
@@ -239,7 +250,10 @@ FnDef                ::= [Visibility] "fn" identifier GenericParamList?
 ReturnType           ::= "->" Type
 ParamList            ::= Parameter { "," Parameter } [ "," ]
 GenericParamList     ::= "<" GenericParam { "," GenericParam } [ "," ] ">"
-GenericParam         ::= identifier [":" Type]
+GenericParam         ::= identifier [":" Type] [WhereClause]
+WhereClause          ::= "where" WherePredicateList
+WherePredicateList   ::= WherePredicate { "," WherePredicate } [ "," ]
+WherePredicate       ::= Type
 Visibility           ::= "pub"
 
 // Structs
