@@ -1,4 +1,5 @@
-![Prism](https://github.com/user-attachments/assets/bcaefe51-e215-4efe-b66c-4ce9456590a3)
+
+![Prism(1)_PhotoGrid](https://github.com/user-attachments/assets/ffd9b8b2-5c6c-4d70-a785-2096df58eb57)
 
 > A blazingly fast, memory-safe systems programming language that compiles to native machine code
 
