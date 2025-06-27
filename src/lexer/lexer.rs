@@ -1,5 +1,5 @@
 use crate::lexer::position::Position;
-use crate::lexer::token::{Token, TokenType};
+use crate::lexer::token::{Token, TokenType, NumberBase};
 use crate::lexer::error::LexerError;
 
 /// The Lexer is responsible for converting source code into tokens
@@ -82,6 +82,217 @@ impl<'a> Lexer<'a> {
         self.position
     }
     
+    /// Check if a character is valid for an identifier
+    fn is_identifier_char(ch: char) -> bool {
+        ch.is_alphanumeric() || ch == '_'
+    }
+    
+    /// Tokenize a number literal (integer or float)
+    fn tokenize_number(&mut self) -> Result<TokenType, LexerError> {
+        let start_pos = self.position;
+        let mut value = String::new();
+        let mut base = NumberBase::Decimal;
+        let mut is_float = false;
+        let mut has_exponent = false;
+        let mut suffix = None;
+        
+        // Check for hex, octal, or binary prefix
+        if self.current_char == Some('0') {
+            value.push('0');
+            self.advance();
+            
+            match self.current_char {
+                Some('x') | Some('X') => {
+                    value.push('x');
+                    self.advance();
+                    base = NumberBase::Hexadecimal;
+                    
+                    // Consume hexadecimal digits
+                    let mut has_digits = false;
+                    while let Some(ch) = self.current_char {
+                        if ch.is_ascii_hexdigit() {
+                            value.push(ch);
+                            has_digits = true;
+                            self.advance();
+                        } else if ch == '_' {
+                            // Skip underscores in numbers
+                            self.advance();
+                        } else {
+                            break;
+                        }
+                    }
+                    
+                    if !has_digits {
+                        return Err(LexerError::InvalidNumber(value, start_pos));
+                    }
+                },
+                Some('o') | Some('O') => {
+                    value.push('o');
+                    self.advance();
+                    base = NumberBase::Octal;
+                    
+                    // Consume octal digits
+                    let mut has_digits = false;
+                    while let Some(ch) = self.current_char {
+                        if ch >= '0' && ch <= '7' {
+                            value.push(ch);
+                            has_digits = true;
+                            self.advance();
+                        } else if ch == '_' {
+                            // Skip underscores in numbers
+                            self.advance();
+                        } else if ch.is_ascii_digit() {
+                            return Err(LexerError::InvalidOctalDigit(ch, self.position));
+                        } else {
+                            break;
+                        }
+                    }
+                    
+                    if !has_digits {
+                        return Err(LexerError::InvalidNumber(value, start_pos));
+                    }
+                },
+                Some('b') | Some('B') => {
+                    value.push('b');
+                    self.advance();
+                    base = NumberBase::Binary;
+                    
+                    // Consume binary digits
+                    let mut has_digits = false;
+                    while let Some(ch) = self.current_char {
+                        if ch == '0' || ch == '1' {
+                            value.push(ch);
+                            has_digits = true;
+                            self.advance();
+                        } else if ch == '_' {
+                            // Skip underscores in numbers
+                            self.advance();
+                        } else if ch.is_ascii_digit() {
+                            return Err(LexerError::InvalidBinaryDigit(ch, self.position));
+                        } else {
+                            break;
+                        }
+                    }
+                    
+                    if !has_digits {
+                        return Err(LexerError::InvalidNumber(value, start_pos));
+                    }
+                },
+                _ => {
+                    // Just a regular decimal number starting with 0
+                    // Continue with the normal decimal number handling below
+                }
+            }
+        }
+        
+        // If we didn't process a special base (or it's a decimal starting with 0)
+        if base == NumberBase::Decimal {
+            // Consume integer part
+            while let Some(ch) = self.current_char {
+                if ch.is_ascii_digit() {
+                    value.push(ch);
+                    self.advance();
+                } else if ch == '_' {
+                    // Skip underscores in numbers
+                    self.advance();
+                } else {
+                    break;
+                }
+            }
+            
+            // Check for decimal point
+            if self.current_char == Some('.') {
+                // Look ahead to ensure it's not the start of a range operator (..)
+                if self.peek() != Some('.') {
+                    value.push('.');
+                    self.advance();
+                    is_float = true;
+                    
+                    // Consume fractional part
+                    let mut has_fraction_digits = false;
+                    while let Some(ch) = self.current_char {
+                        if ch.is_ascii_digit() {
+                            value.push(ch);
+                            has_fraction_digits = true;
+                            self.advance();
+                        } else if ch == '_' {
+                            // Skip underscores in numbers
+                            self.advance();
+                        } else {
+                            break;
+                        }
+                    }
+                    
+                    // A decimal point must be followed by at least one digit
+                    if !has_fraction_digits {
+                        return Err(LexerError::InvalidNumber(value, start_pos));
+                    }
+                }
+            }
+            
+            // Check for exponent
+            if let Some('e') | Some('E') = self.current_char {
+                value.push(self.current_char.unwrap());
+                self.advance();
+                is_float = true;
+                has_exponent = true;
+                
+                // Check for exponent sign
+                if let Some('+') | Some('-') = self.current_char {
+                    value.push(self.current_char.unwrap());
+                    self.advance();
+                }
+                
+                // Consume exponent digits
+                let mut has_exponent_digits = false;
+                while let Some(ch) = self.current_char {
+                    if ch.is_ascii_digit() {
+                        value.push(ch);
+                        has_exponent_digits = true;
+                        self.advance();
+                    } else if ch == '_' {
+                        // Skip underscores in numbers
+                        self.advance();
+                    } else {
+                        break;
+                    }
+                }
+                
+                // An exponent must be followed by at least one digit
+                if !has_exponent_digits {
+                    return Err(LexerError::InvalidNumber(value, start_pos));
+                }
+            }
+        }
+        
+        // Check for numeric suffix
+        if let Some(ch) = self.current_char {
+            if Self::is_identifier_char(ch) {
+                let mut suffix_str = String::new();
+                
+                while let Some(ch) = self.current_char {
+                    if Self::is_identifier_char(ch) {
+                        suffix_str.push(ch);
+                        self.advance();
+                    } else {
+                        break;
+                    }
+                }
+                
+                // Validate suffix
+                // For now, we'll just store it and let the parser validate it
+                suffix = Some(suffix_str);
+            }
+        }
+        
+        // Create the appropriate token type
+        if is_float {
+            Ok(TokenType::Float { value, suffix })
+        } else {
+            Ok(TokenType::Integer { value, base, suffix })
+        }
+    }
+    
     /// Get the next token from the input
     pub fn next_token(&mut self) -> Result<Token, LexerError> {
         // Skip any whitespace
@@ -95,6 +306,14 @@ impl<'a> Lexer<'a> {
         // Get the current character
         let ch = self.current_char.unwrap();
         let position = self.position;
+        
+        // Check for number literals
+        if ch.is_ascii_digit() {
+            return match self.tokenize_number() {
+                Ok(token_type) => Ok(Token::new(token_type, position)),
+                Err(err) => Err(err),
+            };
+        }
         
         // Create the token based on the character
         let token_type = match ch {
