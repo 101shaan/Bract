@@ -49,6 +49,13 @@ impl<'a> Lexer<'a> {
         chars_clone.next()
     }
     
+    /// Look at the character after next without advancing
+    pub fn peek_next(&self) -> Option<char> {
+        let mut chars_clone = self.chars.clone();
+        chars_clone.next(); // Skip the next character
+        chars_clone.next() // Get the character after next
+    }
+    
     /// Get the current character
     pub fn current_char(&self) -> Option<char> {
         self.current_char
@@ -91,24 +98,148 @@ impl<'a> Lexer<'a> {
         
         // Create the token based on the character
         let token_type = match ch {
-            // Single-char operators
-            '+' => TokenType::Plus,
-            '-' => TokenType::Minus,
-            '*' => TokenType::Star,
-            '/' => TokenType::Slash,
-            '=' => TokenType::Equal,
-            '<' => TokenType::Less,
-            '>' => TokenType::Greater,
-            '!' => TokenType::Not,
-            '&' => TokenType::And,
-            '|' => TokenType::Or,
-            '^' => TokenType::Caret,
-            '%' => TokenType::Percent,
+            // Multi-character operators
+            '=' => {
+                if let Some('=') = self.peek() {
+                    self.advance(); // Consume the '='
+                    TokenType::Eq
+                } else {
+                    TokenType::Equal
+                }
+            },
+            '!' => {
+                if let Some('=') = self.peek() {
+                    self.advance(); // Consume the '='
+                    TokenType::NotEq
+                } else {
+                    TokenType::Not
+                }
+            },
+            '<' => {
+                if let Some('=') = self.peek() {
+                    self.advance(); // Consume the '='
+                    TokenType::LessEq
+                } else if let Some('<') = self.peek() {
+                    self.advance(); // Consume the '<'
+                    if let Some('=') = self.peek() {
+                        self.advance(); // Consume the '='
+                        TokenType::LeftShiftEq
+                    } else {
+                        TokenType::LeftShift
+                    }
+                } else {
+                    TokenType::Less
+                }
+            },
+            '>' => {
+                if let Some('=') = self.peek() {
+                    self.advance(); // Consume the '='
+                    TokenType::GreaterEq
+                } else if let Some('>') = self.peek() {
+                    self.advance(); // Consume the '>'
+                    if let Some('=') = self.peek() {
+                        self.advance(); // Consume the '='
+                        TokenType::RightShiftEq
+                    } else {
+                        TokenType::RightShift
+                    }
+                } else {
+                    TokenType::Greater
+                }
+            },
+            '&' => {
+                if let Some('&') = self.peek() {
+                    self.advance(); // Consume the '&'
+                    TokenType::LogicalAnd
+                } else if let Some('=') = self.peek() {
+                    self.advance(); // Consume the '='
+                    TokenType::AndEq
+                } else {
+                    TokenType::And
+                }
+            },
+            '|' => {
+                if let Some('|') = self.peek() {
+                    self.advance(); // Consume the '|'
+                    TokenType::LogicalOr
+                } else if let Some('=') = self.peek() {
+                    self.advance(); // Consume the '='
+                    TokenType::OrEq
+                } else {
+                    TokenType::Or
+                }
+            },
+            '-' => {
+                if let Some('>') = self.peek() {
+                    self.advance(); // Consume the '>'
+                    TokenType::Arrow
+                } else if let Some('=') = self.peek() {
+                    self.advance(); // Consume the '='
+                    TokenType::MinusEq
+                } else {
+                    TokenType::Minus
+                }
+            },
+            ':' => {
+                if let Some(':') = self.peek() {
+                    self.advance(); // Consume the ':'
+                    TokenType::DoubleColon
+                } else {
+                    TokenType::Colon
+                }
+            },
+            '+' => {
+                if let Some('=') = self.peek() {
+                    self.advance(); // Consume the '='
+                    TokenType::PlusEq
+                } else {
+                    TokenType::Plus
+                }
+            },
+            '*' => {
+                if let Some('=') = self.peek() {
+                    self.advance(); // Consume the '='
+                    TokenType::StarEq
+                } else {
+                    TokenType::Star
+                }
+            },
+            '/' => {
+                if let Some('=') = self.peek() {
+                    self.advance(); // Consume the '='
+                    TokenType::SlashEq
+                } else {
+                    TokenType::Slash
+                }
+            },
+            '%' => {
+                if let Some('=') = self.peek() {
+                    self.advance(); // Consume the '='
+                    TokenType::PercentEq
+                } else {
+                    TokenType::Percent
+                }
+            },
+            '^' => {
+                if let Some('=') = self.peek() {
+                    self.advance(); // Consume the '='
+                    TokenType::CaretEq
+                } else {
+                    TokenType::Caret
+                }
+            },
+            '.' => {
+                if let Some('.') = self.peek() {
+                    self.advance(); // Consume the '.'
+                    TokenType::DotDot
+                } else {
+                    TokenType::Dot
+                }
+            },
+            
+            // Single-char operators and punctuation
             '~' => TokenType::Tilde,
             '?' => TokenType::Question,
-            ':' => TokenType::Colon,
-            
-            // Punctuation
             '(' => TokenType::LeftParen,
             ')' => TokenType::RightParen,
             '{' => TokenType::LeftBrace,
@@ -117,7 +248,6 @@ impl<'a> Lexer<'a> {
             ']' => TokenType::RightBracket,
             ';' => TokenType::Semicolon,
             ',' => TokenType::Comma,
-            '.' => TokenType::Dot,
             
             // Unknown character
             _ => {
