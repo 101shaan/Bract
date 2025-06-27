@@ -1,6 +1,7 @@
 use crate::lexer::position::Position;
 use crate::lexer::token::{Token, TokenType, NumberBase};
 use crate::lexer::error::LexerError;
+use std::char;
 
 /// The Lexer is responsible for converting source code into tokens
 pub struct Lexer<'a> {
@@ -85,6 +86,116 @@ impl<'a> Lexer<'a> {
     /// Check if a character is valid for an identifier
     fn is_identifier_char(ch: char) -> bool {
         ch.is_alphanumeric() || ch == '_'
+    }
+    
+    /// Process an escape sequence in a string literal
+    fn process_escape_sequence(&mut self) -> Result<char, LexerError> {
+        // We've already consumed the backslash
+        let escape_pos = self.position;
+        
+        if let Some(ch) = self.current_char {
+            self.advance(); // Consume the escape character
+            
+            match ch {
+                'n' => Ok('\n'),
+                'r' => Ok('\r'),
+                't' => Ok('\t'),
+                '\\' => Ok('\\'),
+                '"' => Ok('"'),
+                '\'' => Ok('\''),
+                '0' => Ok('\0'),
+                'u' => self.process_unicode_escape(escape_pos),
+                _ => Err(LexerError::InvalidEscapeSequence(format!("\\{}", ch), escape_pos)),
+            }
+        } else {
+            Err(LexerError::InvalidEscapeSequence("\\".to_string(), escape_pos))
+        }
+    }
+    
+    /// Process a Unicode escape sequence (\u{XXXX})
+    fn process_unicode_escape(&mut self, escape_pos: Position) -> Result<char, LexerError> {
+        // We expect a { after \u
+        if self.current_char != Some('{') {
+            return Err(LexerError::InvalidUnicodeEscape("\\u".to_string(), escape_pos));
+        }
+        self.advance(); // Consume the '{'
+        
+        let mut code_point = 0u32;
+        let mut digit_count = 0;
+        
+        // Read hex digits until we find a closing }
+        while let Some(ch) = self.current_char {
+            if ch == '}' {
+                self.advance(); // Consume the '}'
+                break;
+            }
+            
+            if let Some(digit) = ch.to_digit(16) {
+                code_point = code_point * 16 + digit;
+                digit_count += 1;
+                
+                if digit_count > 6 {
+                    // Too many digits for a valid Unicode code point
+                    return Err(LexerError::InvalidUnicodeEscape(
+                        format!("\\u{{...}} (too many digits)"), 
+                        escape_pos
+                    ));
+                }
+                
+                self.advance(); // Consume the digit
+            } else {
+                return Err(LexerError::InvalidUnicodeEscape(
+                    format!("\\u{{{}...}}", ch), 
+                    escape_pos
+                ));
+            }
+        }
+        
+        if digit_count == 0 {
+            return Err(LexerError::InvalidUnicodeEscape("\\u{}".to_string(), escape_pos));
+        }
+        
+        // Convert the code point to a character
+        match char::from_u32(code_point) {
+            Some(c) => Ok(c),
+            None => Err(LexerError::InvalidUnicodeEscape(
+                format!("\\u{{{:x}}}", code_point), 
+                escape_pos
+            )),
+        }
+    }
+    
+    /// Tokenize a string literal
+    fn tokenize_string(&mut self) -> Result<TokenType, LexerError> {
+        let start_pos = self.position;
+        let mut value = String::new();
+        
+        // Consume the opening quote
+        self.advance();
+        
+        while let Some(ch) = self.current_char {
+            if ch == '"' {
+                // End of string
+                self.advance(); // Consume the closing quote
+                return Ok(TokenType::String { 
+                    value, 
+                    raw: false,
+                    raw_delimiter: None,
+                });
+            } else if ch == '\\' {
+                // Escape sequence
+                self.advance(); // Consume the backslash
+                let escaped_char = self.process_escape_sequence()?;
+                value.push(escaped_char);
+            } else {
+                // Regular character
+                value.push(ch);
+                self.advance();
+            }
+        }
+        
+        // If we get here, the string was not terminated
+        Err(LexerError::UnterminatedString(start_pos))
     }
     
     /// Tokenize a number literal (integer or float)
@@ -306,6 +417,14 @@ impl<'a> Lexer<'a> {
         // Get the current character
         let ch = self.current_char.unwrap();
         let position = self.position;
+        
+        // Check for string literals
+        if ch == '"' {
+            return match self.tokenize_string() {
+                Ok(token_type) => Ok(Token::new(token_type, position)),
+                Err(err) => Err(err),
+            };
+        }
         
         // Check for number literals
         if ch.is_ascii_digit() {
