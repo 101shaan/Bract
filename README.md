@@ -1,6 +1,4 @@
-
-# Prism ⚡![Prism](https://github.com/user-attachments/assets/bcaefe51-e215-4efe-b66c-4ce9456590a3)
-
+![Prism](https://github.com/user-attachments/assets/bcaefe51-e215-4efe-b66c-4ce9456590a3)
 
 > A blazingly fast, memory-safe systems programming language that compiles to native machine code
 
