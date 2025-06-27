@@ -18,6 +18,8 @@ pub struct Lexer<'a> {
     position: Position,
     /// Keyword lookup table
     keywords: HashMap<String, TokenType>,
+    /// Whether to include comments in the token stream
+    include_comments: bool,
 }
 
 impl<'a> Lexer<'a> {
@@ -33,7 +35,15 @@ impl<'a> Lexer<'a> {
             current_char,
             position: Position::start(file_id),
             keywords: Self::init_keywords(),
+            include_comments: false,
         }
+    }
+    
+    /// Create a new lexer that includes comments in the token stream
+    pub fn new_with_comments(input: &'a str, file_id: usize) -> Self {
+        let mut lexer = Self::new(input, file_id);
+        lexer.include_comments = true;
+        lexer
     }
     
     /// Initialize the keyword lookup table
@@ -141,6 +151,109 @@ impl<'a> Lexer<'a> {
     /// Check if a character can start an identifier
     fn is_identifier_start(ch: char) -> bool {
         ch.is_alphabetic() || ch == '_'
+    }
+    
+    /// Skip a line comment and return the comment text if include_comments is true
+    fn skip_line_comment(&mut self) -> Option<TokenType> {
+        let start_pos = self.position;
+        let mut comment = String::new();
+        let is_doc_comment = self.peek() == Some('/');
+        
+        // Skip the second '/' or third '/' for doc comments
+        if is_doc_comment {
+            self.advance();
+        }
+        
+        // Skip the current character (which is the second '/')
+        self.advance();
+        
+        // Collect the comment text
+        while let Some(ch) = self.current_char {
+            if ch == '\n' {
+                break;
+            }
+            comment.push(ch);
+            self.advance();
+        }
+        
+        // Return the comment token if include_comments is true
+        if self.include_comments {
+            if is_doc_comment {
+                Some(TokenType::DocLineComment(comment))
+            } else {
+                Some(TokenType::LineComment(comment))
+            }
+        } else {
+            None
+        }
+    }
+    
+    /// Skip a block comment and return the comment text if include_comments is true
+    fn skip_block_comment(&mut self) -> Result<Option<TokenType>, LexerError> {
+        let start_pos = self.position;
+        let mut comment = String::new();
+        let is_doc_comment = self.peek() == Some('*');
+        
+        // Skip the '*' character
+        self.advance();
+        
+        // Check if it's a doc comment (second '*')
+        if is_doc_comment {
+            // Skip the second '*' for doc comments if present
+            if self.current_char == Some('*') && self.peek() != Some('/') {
+                self.advance();
+            }
+        }
+        
+        // Track nesting level for nested block comments
+        let mut nesting_level = 1;
+        
+        // Collect the comment text
+        while let Some(ch) = self.current_char {
+            // Check for nested block comment start
+            if ch == '/' && self.peek() == Some('*') {
+                comment.push(ch);
+                self.advance();
+                comment.push(self.current_char.unwrap());
+                self.advance();
+                nesting_level += 1;
+                continue;
+            }
+            
+            // Check for block comment end
+            if ch == '*' && self.peek() == Some('/') {
+                self.advance(); // Skip the '*'
+                self.advance(); // Skip the '/'
+                nesting_level -= 1;
+                
+                if nesting_level == 0 {
+                    break;
+                } else {
+                    comment.push('*');
+                    comment.push('/');
+                    continue;
+                }
+            }
+            
+            comment.push(ch);
+            self.advance();
+        }
+        
+        // Check if we reached the end of input without closing the comment
+        if nesting_level > 0 {
+            return Err(LexerError::UnterminatedBlockComment(start_pos));
+        }
+        
+        // Return the comment token if include_comments is true
+        if self.include_comments {
+            if is_doc_comment {
+                Ok(Some(TokenType::DocBlockComment(comment)))
+            } else {
+                Ok(Some(TokenType::BlockComment(comment)))
+            }
+        } else {
+            Ok(None)
+        }
     }
     
     /// Tokenize an identifier or keyword
@@ -495,6 +608,26 @@ impl<'a> Lexer<'a> {
         // Get the current character
         let ch = self.current_char.unwrap();
         let position = self.position;
+        
+        // Check for comments
+        if ch == '/' {
+            if self.peek() == Some('/') {
+                // Line comment
+                self.advance(); // Skip the first '/'
+                if let Some(comment_token) = self.skip_line_comment() {
+                    return Ok(Token::new(comment_token, position));
+                }
+                return self.next_token(); // Skip the comment and get the next token
+            } else if self.peek() == Some('*') {
+                // Block comment
+                self.advance(); // Skip the '/'
+                match self.skip_block_comment() {
+                    Ok(Some(comment_token)) => return Ok(Token::new(comment_token, position)),
+                    Ok(None) => return self.next_token(), // Skip the comment and get the next token
+                    Err(err) => return Err(err),
+                }
+            }
+        }
         
         // Check for identifiers and keywords
         if Self::is_identifier_start(ch) {
