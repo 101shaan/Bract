@@ -2,6 +2,7 @@ use crate::lexer::position::Position;
 use crate::lexer::token::{Token, TokenType, NumberBase};
 use crate::lexer::error::LexerError;
 use std::char;
+use std::collections::HashMap;
 
 /// The Lexer is responsible for converting source code into tokens
 pub struct Lexer<'a> {
@@ -15,6 +16,8 @@ pub struct Lexer<'a> {
     current_char: Option<char>,
     /// Position tracking for error reporting
     position: Position,
+    /// Keyword lookup table
+    keywords: HashMap<String, TokenType>,
 }
 
 impl<'a> Lexer<'a> {
@@ -29,7 +32,54 @@ impl<'a> Lexer<'a> {
             current_pos: 0,
             current_char,
             position: Position::start(file_id),
+            keywords: Self::init_keywords(),
         }
+    }
+    
+    /// Initialize the keyword lookup table
+    fn init_keywords() -> HashMap<String, TokenType> {
+        let mut keywords = HashMap::new();
+        
+        // Add all keywords
+        keywords.insert("abort".to_string(), TokenType::Abort);
+        keywords.insert("break".to_string(), TokenType::Break);
+        keywords.insert("box".to_string(), TokenType::Box);
+        keywords.insert("const".to_string(), TokenType::Const);
+        keywords.insert("continue".to_string(), TokenType::Continue);
+        keywords.insert("do".to_string(), TokenType::Do);
+        keywords.insert("else".to_string(), TokenType::Else);
+        keywords.insert("enum".to_string(), TokenType::Enum);
+        keywords.insert("extern".to_string(), TokenType::Extern);
+        keywords.insert("false".to_string(), TokenType::False);
+        keywords.insert("fn".to_string(), TokenType::Fn);
+        keywords.insert("for".to_string(), TokenType::For);
+        keywords.insert("if".to_string(), TokenType::If);
+        keywords.insert("impl".to_string(), TokenType::Impl);
+        keywords.insert("in".to_string(), TokenType::In);
+        keywords.insert("let".to_string(), TokenType::Let);
+        keywords.insert("loop".to_string(), TokenType::Loop);
+        keywords.insert("match".to_string(), TokenType::Match);
+        keywords.insert("mod".to_string(), TokenType::Mod);
+        keywords.insert("move".to_string(), TokenType::Move);
+        keywords.insert("mut".to_string(), TokenType::Mut);
+        keywords.insert("pub".to_string(), TokenType::Pub);
+        keywords.insert("return".to_string(), TokenType::Return);
+        keywords.insert("struct".to_string(), TokenType::Struct);
+        keywords.insert("true".to_string(), TokenType::True);
+        keywords.insert("type".to_string(), TokenType::Type);
+        keywords.insert("use".to_string(), TokenType::Use);
+        keywords.insert("while".to_string(), TokenType::While);
+        keywords.insert("async".to_string(), TokenType::Async);
+        keywords.insert("await".to_string(), TokenType::Await);
+        
+        // Reserved keywords
+        keywords.insert("trait".to_string(), TokenType::Trait);
+        keywords.insert("try".to_string(), TokenType::Try);
+        
+        // Boolean literals and null
+        keywords.insert("null".to_string(), TokenType::Null);
+        
+        keywords
     }
     
     /// Advance to the next character
@@ -86,6 +136,34 @@ impl<'a> Lexer<'a> {
     /// Check if a character is valid for an identifier
     fn is_identifier_char(ch: char) -> bool {
         ch.is_alphanumeric() || ch == '_'
+    }
+    
+    /// Check if a character can start an identifier
+    fn is_identifier_start(ch: char) -> bool {
+        ch.is_alphabetic() || ch == '_'
+    }
+    
+    /// Tokenize an identifier or keyword
+    fn tokenize_identifier(&mut self) -> TokenType {
+        let mut identifier = String::new();
+        
+        // Consume all identifier characters
+        while let Some(ch) = self.current_char {
+            if Self::is_identifier_char(ch) {
+                identifier.push(ch);
+                self.advance();
+            } else {
+                break;
+            }
+        }
+        
+        // Check if it's a keyword
+        if let Some(keyword_type) = self.keywords.get(&identifier) {
+            keyword_type.clone()
+        } else {
+            // It's a regular identifier
+            TokenType::Identifier(identifier)
+        }
     }
     
     /// Process an escape sequence in a string literal
@@ -417,6 +495,12 @@ impl<'a> Lexer<'a> {
         // Get the current character
         let ch = self.current_char.unwrap();
         let position = self.position;
+        
+        // Check for identifiers and keywords
+        if Self::is_identifier_start(ch) {
+            let token_type = self.tokenize_identifier();
+            return Ok(Token::new(token_type, position));
+        }
         
         // Check for string literals
         if ch == '"' {
