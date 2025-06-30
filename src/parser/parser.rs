@@ -38,8 +38,8 @@ impl StringInterner {
 /// The main parser struct that converts tokens to AST
 pub struct Parser<'a> {
     lexer: Lexer<'a>,
-    current_token: Option<Token>,
-    interner: StringInterner,
+    pub(super) current_token: Option<Token>,
+    pub(super) interner: StringInterner,
     errors: Vec<ParseError>,
 }
 
@@ -323,14 +323,6 @@ impl<'a> Parser<'a> {
     
     fn parse_use_decl(&mut self, _start_pos: Position) -> ParseResult<Item> {
         todo!("Use declaration parsing will be implemented")
-    }
-    
-    fn parse_pattern(&mut self) -> ParseResult<Pattern> {
-        todo!("Pattern parsing will be implemented")
-    }
-    
-    fn parse_type(&mut self) -> ParseResult<Type> {
-        todo!("Type parsing will be implemented")
     }
     
     fn parse_block_expression(&mut self) -> ParseResult<Expr> {

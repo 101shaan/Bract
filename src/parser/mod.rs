@@ -5,5 +5,8 @@ pub mod types;
 pub mod patterns;
 pub mod error;
 
+#[cfg(test)]
+mod tests;
+
 pub use parser::Parser;
 pub use error::{ParseError, ParseResult}; 
