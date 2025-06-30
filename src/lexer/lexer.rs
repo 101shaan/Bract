@@ -153,6 +153,46 @@ impl<'a> Lexer<'a> {
         ch.is_alphabetic() || ch == '_'
     }
     
+    /// Tokenize a character literal
+    fn tokenize_char(&mut self) -> Result<TokenType, LexerError> {
+        let start_pos = self.position;
+        
+        // Consume the opening quote
+        self.advance();
+        
+        // Check for empty character literal
+        if self.current_char == Some('\'') {
+            self.advance(); // Consume the closing quote
+            return Err(LexerError::EmptyCharLiteral(start_pos));
+        }
+        
+        let ch = if self.current_char == Some('\\') {
+            // Escape sequence
+            self.advance(); // Consume the backslash
+            self.process_escape_sequence()?
+        } else if let Some(c) = self.current_char {
+            self.advance(); // Consume the character
+            c
+        } else {
+            return Err(LexerError::UnterminatedChar(start_pos));
+        };
+        
+        // Check for closing quote
+        if self.current_char != Some('\'') {
+            // If there are more characters before the closing quote, it's a multi-character literal
+            if self.current_char.is_some() {
+                return Err(LexerError::MultiCharLiteral(start_pos));
+            } else {
+                return Err(LexerError::UnterminatedChar(start_pos));
+            }
+        }
+        
+        // Consume the closing quote
+        self.advance();
+        
+        Ok(TokenType::Char(ch))
+    }
+    
     /// Skip a line comment and return the comment text if include_comments is true
     fn skip_line_comment(&mut self) -> Option<TokenType> {
         let start_pos = self.position;
@@ -595,6 +635,77 @@ impl<'a> Lexer<'a> {
         }
     }
     
+    /// Count the number of hash symbols (#) in a raw string delimiter
+    fn count_hashes(&mut self) -> usize {
+        let mut count = 0;
+        
+        while let Some('#') = self.current_char {
+            count += 1;
+            self.advance();
+        }
+        
+        count
+    }
+    
+    /// Tokenize a raw string literal (r"..." or r#"..."#)
+    fn tokenize_raw_string(&mut self) -> Result<TokenType, LexerError> {
+        let start_pos = self.position;
+        
+        // Consume the 'r' character
+        self.advance();
+        
+        // Count the number of hash symbols
+        let hash_count = self.count_hashes();
+        
+        // Check for opening quote
+        if self.current_char != Some('"') {
+            return Err(LexerError::InvalidRawStringDelimiter(start_pos));
+        }
+        self.advance(); // Consume the opening quote
+        
+        let mut value = String::new();
+        
+        // Collect characters until we find the closing delimiter
+        loop {
+            if self.current_char.is_none() {
+                return Err(LexerError::UnterminatedRawString(start_pos));
+            }
+            
+            // Check for closing quote
+            if self.current_char == Some('"') {
+                self.advance(); // Consume the quote
+                
+                // Count the number of hash symbols after the quote
+                let mut closing_hash_count = 0;
+                while let Some('#') = self.current_char {
+                    closing_hash_count += 1;
+                    self.advance();
+                }
+                
+                // If the number of hash symbols matches, we've found the end of the string
+                if closing_hash_count == hash_count {
+                    break;
+                }
+                
+                // Otherwise, add the quote and hash symbols to the string value
+                value.push('"');
+                for _ in 0..closing_hash_count {
+                    value.push('#');
+                }
+            } else {
+                // Add the current character to the string value
+                value.push(self.current_char.unwrap());
+                self.advance();
+            }
+        }
+        
+        Ok(TokenType::String {
+            value,
+            raw: true,
+            raw_delimiter: if hash_count > 0 { Some(hash_count) } else { None },
+        })
+    }
+    
     /// Get the next token from the input
     pub fn next_token(&mut self) -> Result<Token, LexerError> {
         // Skip any whitespace
@@ -608,6 +719,22 @@ impl<'a> Lexer<'a> {
         // Get the current character
         let ch = self.current_char.unwrap();
         let position = self.position;
+        
+        // Check for raw string literals
+        if ch == 'r' && (self.peek() == Some('#') || self.peek() == Some('"')) {
+            return match self.tokenize_raw_string() {
+                Ok(token_type) => Ok(Token::new(token_type, position)),
+                Err(err) => Err(err),
+            };
+        }
+        
+        // Check for character literals
+        if ch == '\'' {
+            return match self.tokenize_char() {
+                Ok(token_type) => Ok(Token::new(token_type, position)),
+                Err(err) => Err(err),
+            };
+        }
         
         // Check for comments
         if ch == '/' {
@@ -658,6 +785,9 @@ impl<'a> Lexer<'a> {
                 if let Some('=') = self.peek() {
                     self.advance(); // Consume the '='
                     TokenType::Eq
+                } else if let Some('>') = self.peek() {
+                    self.advance(); // Consume the '>'
+                    TokenType::FatArrow
                 } else {
                     TokenType::Equal
                 }

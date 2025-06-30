@@ -70,7 +70,7 @@ mod tests {
     
     #[test]
     fn test_multi_char_operators() {
-        let mut lexer = create_lexer("== != <= >= && || -> :: += -= *= /= %= &= |= ^= <<= >>= << >> ..");
+        let mut lexer = create_lexer("== != <= >= && || -> :: += -= *= /= %= &= |= ^= <<= >>= << >> .. =>");
         let tokens = collect_tokens(&mut lexer);
         assert_eq!(tokens, vec![
             TokenType::Eq,
@@ -94,6 +94,7 @@ mod tests {
             TokenType::LeftShift,
             TokenType::RightShift,
             TokenType::DotDot,
+            TokenType::FatArrow,
             TokenType::Eof,
         ]);
     }
@@ -233,6 +234,92 @@ mod tests {
     }
     
     #[test]
+    fn test_raw_string_literals() {
+        let mut lexer = create_lexer(r#"r"hello world" r#"hello "world""# r##"hello #"world"##"#);
+        let tokens = collect_tokens(&mut lexer);
+        assert_eq!(tokens, vec![
+            TokenType::String { value: "hello world".to_string(), raw: true, raw_delimiter: None },
+            TokenType::String { value: "hello \"world\"".to_string(), raw: true, raw_delimiter: Some(1) },
+            TokenType::String { value: "hello #\"world\"".to_string(), raw: true, raw_delimiter: Some(2) },
+            TokenType::Eof,
+        ]);
+    }
+    
+    #[test]
+    fn test_raw_string_with_escape_sequences() {
+        let mut lexer = create_lexer(r#"r"C:\path\to\file.txt" r"Line 1\nLine 2""#);
+        let tokens = collect_tokens(&mut lexer);
+        assert_eq!(tokens, vec![
+            TokenType::String { value: r"C:\path\to\file.txt".to_string(), raw: true, raw_delimiter: None },
+            TokenType::String { value: r"Line 1\nLine 2".to_string(), raw: true, raw_delimiter: None },
+            TokenType::Eof,
+        ]);
+    }
+    
+    #[test]
+    #[should_panic(expected = "Lexer error")]
+    fn test_invalid_raw_string_delimiter() {
+        let mut lexer = create_lexer(r"r#hello#");
+        collect_tokens(&mut lexer);
+    }
+    
+    #[test]
+    #[should_panic(expected = "Lexer error")]
+    fn test_unterminated_raw_string() {
+        let mut lexer = create_lexer(r#"r#"unterminated raw string"#);
+        collect_tokens(&mut lexer);
+    }
+    
+    #[test]
+    #[should_panic(expected = "Lexer error")]
+    fn test_mismatched_raw_string_delimiters() {
+        let mut lexer = create_lexer(r#"r##"mismatched delimiters"#"#);
+        collect_tokens(&mut lexer);
+    }
+    
+    #[test]
+    fn test_character_literals() {
+        let mut lexer = create_lexer("'a' 'Z' '0' '_' '\\n' '\\t' '\\r' '\\\\' '\\'' '\\\"' '\\0' '\\u{1F600}'");
+        let tokens = collect_tokens(&mut lexer);
+        assert_eq!(tokens, vec![
+            TokenType::Char('a'),
+            TokenType::Char('Z'),
+            TokenType::Char('0'),
+            TokenType::Char('_'),
+            TokenType::Char('\n'),
+            TokenType::Char('\t'),
+            TokenType::Char('\r'),
+            TokenType::Char('\\'),
+            TokenType::Char('\''),
+            TokenType::Char('"'),
+            TokenType::Char('\0'),
+            TokenType::Char('😀'), // Unicode for 😀
+            TokenType::Eof,
+        ]);
+    }
+    
+    #[test]
+    #[should_panic(expected = "Lexer error")]
+    fn test_empty_char_literal() {
+        let mut lexer = create_lexer("''");
+        collect_tokens(&mut lexer);
+    }
+    
+    #[test]
+    #[should_panic(expected = "Lexer error")]
+    fn test_unterminated_char_literal() {
+        let mut lexer = create_lexer("'a");
+        collect_tokens(&mut lexer);
+    }
+    
+    #[test]
+    #[should_panic(expected = "Lexer error")]
+    fn test_multi_char_literal() {
+        let mut lexer = create_lexer("'ab'");
+        collect_tokens(&mut lexer);
+    }
+    
+    #[test]
     fn test_string_literals() {
         let mut lexer = create_lexer(r#""hello world" "with \"quotes\"" "with \n \t \r \\ escapes" "empty""#);
         let tokens = collect_tokens(&mut lexer);
@@ -315,6 +402,8 @@ mod tests {
                 let x = 42;
                 let y = 3.14;
                 let message = "Hello, world!";
+                let ch = 'a';
+                let path = r"C:\path\to\file.txt";
                 
                 if x > 10 {
                     println!("x is greater than 10");
@@ -331,11 +420,13 @@ mod tests {
         let tokens = collect_tokens(&mut lexer);
         
         // We'll just check the count and a few key tokens to avoid a massive assertion
-        assert_eq!(tokens.len(), 38); // 37 tokens + EOF
+        assert_eq!(tokens.len(), 46); // 45 tokens + EOF
         assert!(matches!(tokens[0], TokenType::Fn));
         assert!(matches!(tokens[1], TokenType::Identifier(ref s) if s == "main"));
-        assert!(matches!(tokens[36], TokenType::RightBrace));
-        assert!(matches!(tokens[37], TokenType::Eof));
+        assert!(matches!(tokens[10], TokenType::Char('a')));
+        assert!(matches!(tokens[12], TokenType::String { raw: true, .. }));
+        assert!(matches!(tokens[44], TokenType::RightBrace));
+        assert!(matches!(tokens[45], TokenType::Eof));
     }
     
     #[test]
