@@ -94,7 +94,7 @@ Create comprehensive tests for the Prism lexer and fix any issues. Generate:
 Also create a simple CLI tool that can tokenize Prism files and output the token stream for debugging. Put tests in tests/lexer_tests.rs and the CLI tool in src/bin/prism_lex.rs.
 
 PHASE 3: PARSER & AST
-STEP 6: AST Node Definitions
+STEP 6: AST Node Definitions ✅ **COMPLETED**
 Cursor Request:
 Define all AST (Abstract Syntax Tree) node types for Prism in Rust. Create src/ast.rs with:
 
