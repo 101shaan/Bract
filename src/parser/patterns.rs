@@ -12,7 +12,7 @@
 //! - Or patterns (a | b | c)
 //! - Range patterns (1..10)
 
-use crate::lexer::TokenType;
+use crate::lexer::{TokenType, position::Position};
 use crate::ast::*;
 use super::parser::Parser;
 use super::error::{ParseError, ParseResult};
@@ -56,8 +56,9 @@ impl<'a> Parser<'a> {
             let span_end = self.current_position();
             
             Ok(Pattern::Range {
-                start: Box::new(start_pattern),
-                end: Box::new(end_pattern),
+                start: Some(Box::new(start_pattern)),
+                end: Some(Box::new(end_pattern)),
+                inclusive: false, // .. is exclusive, ..= would be inclusive
                 span: Span::new(start_pos, span_end),
             })
         } else {
@@ -99,17 +100,18 @@ impl<'a> Parser<'a> {
                         let end_pos = self.current_position();
                         Ok(Pattern::Identifier {
                             name: identifier,
+                            is_mutable: false, // Default to immutable, mut would be handled by let statement
                             span: Span::new(start_pos, end_pos),
                         })
                     }
                 }
                 
                 // Literal patterns
-                TokenType::Integer { value, .. } => {
+                TokenType::Integer { value, base, .. } => {
                     let literal = Literal::Integer {
                         value: value.clone(),
+                        base: *base,
                         suffix: None,
-                        span: Span::new(start_pos, start_pos),
                     };
                     self.advance()?;
                     let end_pos = self.current_position();
@@ -123,7 +125,6 @@ impl<'a> Parser<'a> {
                     let literal = Literal::Float {
                         value: value.clone(),
                         suffix: None,
-                        span: Span::new(start_pos, start_pos),
                     };
                     self.advance()?;
                     let end_pos = self.current_position();
@@ -133,10 +134,11 @@ impl<'a> Parser<'a> {
                     })
                 }
                 
-                TokenType::String { value, .. } => {
+                TokenType::String { value, raw, raw_delimiter } => {
                     let literal = Literal::String {
-                        value: value.clone(),
-                        span: Span::new(start_pos, start_pos),
+                        value: self.interner.intern(value),
+                        raw: *raw,
+                        raw_delimiter: *raw_delimiter,
                     };
                     self.advance()?;
                     let end_pos = self.current_position();
@@ -147,10 +149,7 @@ impl<'a> Parser<'a> {
                 }
                 
                 TokenType::Char(ch) => {
-                    let literal = Literal::Char {
-                        value: *ch,
-                        span: Span::new(start_pos, start_pos),
-                    };
+                    let literal = Literal::Char(*ch);
                     self.advance()?;
                     let end_pos = self.current_position();
                     Ok(Pattern::Literal {
@@ -160,10 +159,7 @@ impl<'a> Parser<'a> {
                 }
                 
                 TokenType::True => {
-                    let literal = Literal::Bool {
-                        value: true,
-                        span: Span::new(start_pos, start_pos),
-                    };
+                    let literal = Literal::Bool(true);
                     self.advance()?;
                     let end_pos = self.current_position();
                     Ok(Pattern::Literal {
@@ -173,10 +169,7 @@ impl<'a> Parser<'a> {
                 }
                 
                 TokenType::False => {
-                    let literal = Literal::Bool {
-                        value: false,
-                        span: Span::new(start_pos, start_pos),
-                    };
+                    let literal = Literal::Bool(false);
                     self.advance()?;
                     let end_pos = self.current_position();
                     Ok(Pattern::Literal {
@@ -186,9 +179,7 @@ impl<'a> Parser<'a> {
                 }
                 
                 TokenType::Null => {
-                    let literal = Literal::Null {
-                        span: Span::new(start_pos, start_pos),
-                    };
+                    let literal = Literal::Null;
                     self.advance()?;
                     let end_pos = self.current_position();
                     Ok(Pattern::Literal {
@@ -320,23 +311,22 @@ impl<'a> Parser<'a> {
                     let field_name_interned = self.interner.intern(field_name);
                     self.advance()?;
                     
-                    let pattern = if self.match_token(&TokenType::Colon) {
+                    if self.match_token(&TokenType::Colon) {
                         // field: pattern
-                        self.parse_pattern()?
+                        let pattern = self.parse_pattern()?;
+                        fields.push(FieldPattern {
+                            name: field_name_interned,
+                            pattern: Some(pattern),
+                            span: Span::new(field_start, self.current_position()),
+                        });
                     } else {
                         // field (shorthand for field: field)
-                        let field_end = self.current_position();
-                        Pattern::Identifier {
+                        fields.push(FieldPattern {
                             name: field_name_interned,
-                            span: Span::new(field_start, field_end),
-                        }
+                            pattern: None, // None for shorthand syntax
+                            span: Span::new(field_start, self.current_position()),
+                        });
                     };
-                    
-                    fields.push(StructPatternField {
-                        name: field_name_interned,
-                        pattern,
-                        span: Span::new(field_start, self.current_position()),
-                    });
                     
                     // Optional comma
                     if !self.check(&TokenType::RightBrace) {
@@ -365,7 +355,7 @@ impl<'a> Parser<'a> {
         Ok(Pattern::Struct {
             path: vec![struct_name],
             fields,
-            has_rest,
+            rest: has_rest,
             span: Span::new(start_pos, end_pos),
         })
     }
