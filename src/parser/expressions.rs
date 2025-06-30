@@ -13,53 +13,9 @@ impl<'a> Parser<'a> {
     
     /// Parse assignment expressions (lowest precedence)
     pub fn parse_assignment_expression(&mut self) -> ParseResult<Expr> {
-        let expr = self.parse_ternary_expression()?;
-        
-        if let Some(token) = &self.current_token {
-            match &token.token_type {
-                TokenType::Equal => {
-                    self.advance()?;
-                    let value = self.parse_assignment_expression()?;
-                    let span = Span::new(expr.span().start, value.span().end);
-                    Ok(Expr::Binary {
-                        left: Box::new(expr),
-                        op: BinaryOp::Assign,
-                        right: Box::new(value),
-                        span,
-                    })
-                }
-                TokenType::PlusEq | TokenType::MinusEq | TokenType::StarEq |
-                TokenType::SlashEq | TokenType::PercentEq | TokenType::AndEq |
-                TokenType::OrEq | TokenType::CaretEq | TokenType::LeftShiftEq |
-                TokenType::RightShiftEq => {
-                    let op = match &token.token_type {
-                        TokenType::PlusEq => BinaryOp::Add,
-                        TokenType::MinusEq => BinaryOp::Subtract,
-                        TokenType::StarEq => BinaryOp::Multiply,
-                        TokenType::SlashEq => BinaryOp::Divide,
-                        TokenType::PercentEq => BinaryOp::Modulo,
-                        TokenType::AndEq => BinaryOp::BitwiseAnd,
-                        TokenType::OrEq => BinaryOp::BitwiseOr,
-                        TokenType::CaretEq => BinaryOp::BitwiseXor,
-                        TokenType::LeftShiftEq => BinaryOp::LeftShift,
-                        TokenType::RightShiftEq => BinaryOp::RightShift,
-                        _ => unreachable!(),
-                    };
-                    self.advance()?;
-                    let value = self.parse_assignment_expression()?;
-                    let span = Span::new(expr.span().start, value.span().end);
-                    Ok(Expr::Binary {
-                        left: Box::new(expr),
-                        op,
-                        right: Box::new(value),
-                        span,
-                    })
-                }
-                _ => Ok(expr),
-            }
-        } else {
-            Ok(expr)
-        }
+        // Assignment is handled in statement parsing, not expression parsing
+        // This just delegates to ternary expressions
+        self.parse_ternary_expression()
     }
     
     /// Parse ternary expressions (? :)
@@ -174,7 +130,7 @@ impl<'a> Parser<'a> {
     
     /// Parse equality expressions
     pub fn parse_equality_expression(&mut self) -> ParseResult<Expr> {
-        let mut expr = self.parse_additive_expression()?;
+        let mut expr = self.parse_relational_expression()?;
         
         while let Some(token) = &self.current_token {
             let op = match &token.token_type {
@@ -183,7 +139,7 @@ impl<'a> Parser<'a> {
                 _ => break,
             };
             self.advance()?;
-            let right = self.parse_additive_expression()?;
+            let right = self.parse_relational_expression()?;
             let span = Span::new(expr.span().start, right.span().end);
             expr = Expr::Binary {
                 left: Box::new(expr),
@@ -194,6 +150,73 @@ impl<'a> Parser<'a> {
         }
         
         Ok(expr)
+    }
+    
+    /// Parse relational expressions (< > <= >=)
+    pub fn parse_relational_expression(&mut self) -> ParseResult<Expr> {
+        let mut expr = self.parse_range_expression()?;
+        
+        while let Some(token) = &self.current_token {
+            let op = match &token.token_type {
+                TokenType::Less => BinaryOp::Less,
+                TokenType::Greater => BinaryOp::Greater,
+                TokenType::LessEq => BinaryOp::LessEqual,
+                TokenType::GreaterEq => BinaryOp::GreaterEqual,
+                _ => break,
+            };
+            self.advance()?;
+            let right = self.parse_range_expression()?;
+            let span = Span::new(expr.span().start, right.span().end);
+            expr = Expr::Binary {
+                left: Box::new(expr),
+                op,
+                right: Box::new(right),
+                span,
+            };
+        }
+        
+        Ok(expr)
+    }
+    
+    /// Parse range expressions (.. and ..=)
+    pub fn parse_range_expression(&mut self) -> ParseResult<Expr> {
+        let mut expr = self.parse_additive_expression()?;
+        
+        if let Some(token) = &self.current_token {
+            match &token.token_type {
+                TokenType::DotDot => {
+                    self.advance()?;
+                    // Check for inclusive range (..=)
+                    let inclusive = if self.match_token(&TokenType::Equal) {
+                        true
+                    } else {
+                        false
+                    };
+                    
+                    // Check if there's an end expression
+                    let end = if self.is_expression_token() {
+                        Some(Box::new(self.parse_additive_expression()?))
+                    } else {
+                        None
+                    };
+                    
+                    let end_pos = end.as_ref()
+                        .map(|e| e.span().end)
+                        .unwrap_or(self.current_position());
+                    let span = Span::new(expr.span().start, end_pos);
+                    
+                    Ok(Expr::Range {
+                        start: Some(Box::new(expr)),
+                        end,
+                        inclusive,
+                        span,
+                    })
+                }
+                _ => Ok(expr),
+            }
+        } else {
+            Ok(expr)
+        }
     }
     
     /// Parse additive expressions
@@ -253,7 +276,7 @@ impl<'a> Parser<'a> {
                 TokenType::Tilde => UnaryOp::BitwiseNot,
                 TokenType::Minus => UnaryOp::Negate,
                 TokenType::Plus => UnaryOp::Plus,
-                _ => return self.parse_primary_expression(),
+                _ => return self.parse_postfix_expression(),
             };
             let start_pos = token.position;
             self.advance()?;
@@ -266,8 +289,96 @@ impl<'a> Parser<'a> {
                 span,
             })
         } else {
-            self.parse_primary_expression()
+            self.parse_postfix_expression()
         }
+    }
+    
+    /// Parse postfix expressions (function calls, method calls, field access, indexing)
+    pub fn parse_postfix_expression(&mut self) -> ParseResult<Expr> {
+        let mut expr = self.parse_primary_expression()?;
+        
+        loop {
+            if let Some(token) = &self.current_token {
+                match &token.token_type {
+                    // Function calls: expr(args)
+                    TokenType::LeftParen => {
+                        self.advance()?; // consume '('
+                        let mut args = Vec::new();
+                        
+                        if !self.check(&TokenType::RightParen) {
+                            args.push(self.parse_expression()?);
+                            
+                            while self.match_token(&TokenType::Comma) {
+                                if self.check(&TokenType::RightParen) {
+                                    break; // trailing comma
+                                }
+                                args.push(self.parse_expression()?);
+                            }
+                        }
+                        
+                        let end_token = self.expect(TokenType::RightParen, "function call")?;
+                        let span = Span::new(expr.span().start, end_token.position);
+                        
+                        expr = Expr::Call {
+                            callee: Box::new(expr),
+                            args,
+                            span,
+                        };
+                    }
+                    
+                    // Field access: expr.field
+                    TokenType::Dot => {
+                        self.advance()?; // consume '.'
+                        
+                        if let Some(field_token) = &self.current_token {
+                            if let TokenType::Identifier(field_name) = &field_token.token_type {
+                                let field = self.interner.intern(field_name);
+                                let field_pos = field_token.position;
+                                self.advance()?;
+                                
+                                let span = Span::new(expr.span().start, field_pos);
+                                expr = Expr::FieldAccess {
+                                    object: Box::new(expr),
+                                    field,
+                                    span,
+                                };
+                            } else {
+                                return Err(ParseError::UnexpectedToken {
+                                    expected: vec!["field name".to_string()],
+                                    found: field_token.token_type.clone(),
+                                    position: field_token.position,
+                                });
+                            }
+                        } else {
+                            return Err(ParseError::UnexpectedEof {
+                                expected: vec!["field name".to_string()],
+                                position: self.current_position(),
+                            });
+                        }
+                    }
+                    
+                    // Array indexing: expr[index]
+                    TokenType::LeftBracket => {
+                        self.advance()?; // consume '['
+                        let index = self.parse_expression()?;
+                        let end_token = self.expect(TokenType::RightBracket, "array indexing")?;
+                        let span = Span::new(expr.span().start, end_token.position);
+                        
+                        expr = Expr::Index {
+                            object: Box::new(expr),
+                            index: Box::new(index),
+                            span,
+                        };
+                    }
+                    
+                    _ => break, // No more postfix operators
+                }
+            } else {
+                break; // End of input
+            }
+        }
+        
+        Ok(expr)
     }
     
     /// Parse primary expressions (literals, identifiers, etc.)
@@ -358,6 +469,44 @@ impl<'a> Parser<'a> {
                     let span = Span::new(start_pos, end_token.position);
                     Ok(Expr::Parenthesized {
                         expr: Box::new(expr),
+                        span,
+                    })
+                }
+                TokenType::LeftBrace => {
+                    // Parse block expression
+                    self.advance()?; // consume '{'
+                    let mut statements = Vec::new();
+                    let mut trailing_expr = None;
+                    
+                    while !self.check(&TokenType::RightBrace) && !self.is_at_end() {
+                        // Check if this looks like a statement keyword
+                        if self.is_statement_start() {
+                            statements.push(self.parse_statement()?);
+                        } else {
+                            // Try to parse as expression
+                            let expr = self.parse_expression()?;
+                            
+                            // Check if there's a semicolon (making it a statement)
+                            if self.match_token(&TokenType::Semicolon) {
+                                let expr_span = expr.span();
+                                statements.push(crate::ast::Stmt::Expression {
+                                    expr,
+                                    span: expr_span,
+                                });
+                            } else {
+                                // No semicolon - this is the trailing expression
+                                trailing_expr = Some(Box::new(expr));
+                                break;
+                            }
+                        }
+                    }
+                    
+                    let end_token = self.expect(TokenType::RightBrace, "block expression")?;
+                    let span = Span::new(start_pos, end_token.position);
+                    
+                    Ok(Expr::Block {
+                        statements,
+                        trailing_expr,
                         span,
                     })
                 }
