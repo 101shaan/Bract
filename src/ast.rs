@@ -897,4 +897,150 @@ impl Default for Visibility {
     fn default() -> Self {
         Visibility::Private
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::lexer::Position;
+
+    fn dummy_position() -> Position {
+        Position::new(1, 1, 0, 0)
+    }
+
+    fn dummy_span() -> Span {
+        Span::single(dummy_position())
+    }
+
+    fn dummy_interned_string(id: u32) -> InternedString {
+        InternedString::new(id)
+    }
+
+    #[test]
+    fn test_span_creation_and_merging() {
+        let pos1 = Position::new(1, 1, 0, 0);
+        let pos2 = Position::new(1, 10, 9, 0);
+        
+        let span1 = Span::new(pos1, pos2);
+        assert_eq!(span1.start, pos1);
+        assert_eq!(span1.end, pos2);
+        
+        let span2 = Span::single(pos1);
+        assert_eq!(span2.start, pos1);
+        assert_eq!(span2.end, pos1);
+        
+        let pos3 = Position::new(2, 5, 20, 0);
+        let span3 = Span::single(pos3);
+        let merged = span1.merge(span3);
+        
+        assert_eq!(merged.start, pos1); // Earlier position
+        assert_eq!(merged.end, pos3);   // Later position
+    }
+
+    #[test]
+    fn test_interned_string() {
+        let str1 = InternedString::new(42);
+        let str2 = InternedString::new(42);
+        let str3 = InternedString::new(43);
+        
+        assert_eq!(str1, str2);
+        assert_ne!(str1, str3);
+        assert_eq!(str1.id, 42);
+    }
+
+    #[test]
+    fn test_binary_operators() {
+        // Test that all binary operators are defined
+        let ops = [
+            BinaryOp::Add, BinaryOp::Subtract, BinaryOp::Multiply, BinaryOp::Divide,
+            BinaryOp::Modulo, BinaryOp::BitwiseAnd, BinaryOp::BitwiseOr, BinaryOp::BitwiseXor,
+            BinaryOp::LeftShift, BinaryOp::RightShift, BinaryOp::LogicalAnd, BinaryOp::LogicalOr,
+            BinaryOp::Equal, BinaryOp::NotEqual, BinaryOp::Less, BinaryOp::LessEqual,
+            BinaryOp::Greater, BinaryOp::GreaterEqual, BinaryOp::Assign,
+        ];
+        
+        for op in &ops {
+            // Just ensure they can be created and compared
+            assert_eq!(*op, *op);
+        }
+    }
+
+    #[test]
+    fn test_expression_predicates() {
+        let span = dummy_span();
+        
+        // Literal expression
+        let lit_expr = Expr::Literal {
+            literal: Literal::Bool(true),
+            span,
+        };
+        assert!(lit_expr.is_literal());
+        assert!(!lit_expr.is_identifier());
+        assert!(!lit_expr.has_side_effects());
+        
+        // Identifier expression
+        let id_expr = Expr::Identifier {
+            name: dummy_interned_string(1),
+            span,
+        };
+        assert!(!id_expr.is_literal());
+        assert!(id_expr.is_identifier());
+        assert!(!id_expr.has_side_effects());
+        
+        // Function call expression (has side effects)
+        let call_expr = Expr::Call {
+            callee: Box::new(id_expr.clone()),
+            args: vec![lit_expr.clone()],
+            span,
+        };
+        assert!(!call_expr.is_literal());
+        assert!(!call_expr.is_identifier());
+        assert!(call_expr.has_side_effects());
+    }
+
+    #[test]
+    fn test_pattern_variable_binding() {
+        let span = dummy_span();
+        
+        // Wildcard pattern
+        let wildcard = Pattern::Wildcard { span };
+        assert!(!wildcard.binds_variables());
+        
+        // Identifier pattern
+        let id_pattern = Pattern::Identifier {
+            name: dummy_interned_string(1),
+            is_mutable: false,
+            span,
+        };
+        assert!(id_pattern.binds_variables());
+        
+        // Tuple pattern with identifier
+        let tuple_pattern = Pattern::Tuple {
+            patterns: vec![wildcard.clone(), id_pattern.clone()],
+            span,
+        };
+        assert!(tuple_pattern.binds_variables());
+    }
+
+    #[test]
+    fn test_type_predicates() {
+        let span = dummy_span();
+        
+        // Primitive type
+        let prim_type = Type::Primitive {
+            kind: PrimitiveType::I32,
+            span,
+        };
+        assert!(prim_type.is_primitive());
+        assert!(!prim_type.is_reference());
+        
+        // Reference type
+        let ref_type = Type::Reference {
+            is_mutable: false,
+            target_type: Box::new(prim_type.clone()),
+            span,
+        };
+        assert!(!ref_type.is_primitive());
+        assert!(ref_type.is_reference());
+    }
 } 
