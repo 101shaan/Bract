@@ -37,8 +37,8 @@ fn main() {
 
 ### Phase 1: Core Language ✅ In Progress
 - [x] Project setup
-- [ ] Lexer/Tokenizer
-- [ ] Parser & AST
+- [x] Lexer/Tokenizer
+- [x] Parser & AST
 - [ ] Type system foundations
 - [ ] Basic interpreter
 
