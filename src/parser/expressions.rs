@@ -372,4 +372,22 @@ impl<'a> Parser<'a> {
             })
         }
     }
+
+    /// Check if the current token can start an expression
+    fn is_expression_token(&self) -> bool {
+        if let Some(token) = &self.current_token {
+            matches!(token.token_type,
+                TokenType::Integer { .. } | TokenType::Float { .. } |
+                TokenType::String { .. } | TokenType::Char(_) |
+                TokenType::True | TokenType::False | TokenType::Null |
+                TokenType::Identifier(_) | TokenType::LeftParen |
+                TokenType::LeftBracket | TokenType::LeftBrace |
+                TokenType::Not | TokenType::Minus | TokenType::Plus |
+                TokenType::Star | TokenType::And | TokenType::Tilde |
+                TokenType::Box | TokenType::Move
+            )
+        } else {
+            false
+        }
+    }
 } 

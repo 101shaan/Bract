@@ -325,7 +325,53 @@ impl<'a> Parser<'a> {
         todo!("Use declaration parsing will be implemented")
     }
     
-    fn parse_block_expression(&mut self) -> ParseResult<Expr> {
-        todo!("Block expression parsing will be implemented")
+    /// Parse a block expression: { [statements...] [expr] }
+    pub fn parse_block_expression(&mut self) -> ParseResult<Expr> {
+        let start_pos = self.current_position();
+        self.expect(TokenType::LeftBrace, "block expression")?;
+        
+        let mut statements = Vec::new();
+        let mut trailing_expr = None;
+        
+        while !self.check(&TokenType::RightBrace) && !self.is_at_end() {
+            // Try to parse as statement first
+            if self.is_statement_start() {
+                match self.parse_statement() {
+                    Ok(stmt) => statements.push(stmt),
+                    Err(err) => {
+                        self.add_error(err);
+                        self.synchronize();
+                    }
+                }
+            } else {
+                // Try to parse as expression
+                let expr_start = self.current_position();
+                let expr = self.parse_expression()?;
+                
+                // If there's no semicolon and we're at the end of the block,
+                // this is the trailing expression
+                if !self.check(&TokenType::Semicolon) && self.check(&TokenType::RightBrace) {
+                    trailing_expr = Some(expr);
+                    break;
+                } else {
+                    // It's an expression statement
+                    self.expect(TokenType::Semicolon, "expression statement")?;
+                    let end_pos = self.current_position();
+                    statements.push(Stmt::Expression {
+                        expr,
+                        span: Span::new(expr_start, end_pos),
+                    });
+                }
+            }
+        }
+        
+        self.expect(TokenType::RightBrace, "block expression")?;
+        let end_pos = self.current_position();
+        
+        Ok(Expr::Block {
+            statements,
+            trailing_expr: trailing_expr.map(Box::new),
+            span: Span::new(start_pos, end_pos),
+        })
     }
 } 

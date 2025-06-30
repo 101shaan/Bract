@@ -353,16 +353,15 @@ pub struct MatchArm {
     pub span: Span,
 }
 
-/// Statement nodes
+/// Statement AST nodes
 #[derive(Debug, Clone, PartialEq)]
 pub enum Stmt {
-    /// Expression statements
+    /// Expression statement
     Expression {
         expr: Expr,
         span: Span,
     },
-    
-    /// Let bindings (variable declarations)
+    /// Let binding: let [mut] pattern [: type] [= expr];
     Let {
         pattern: Pattern,
         type_annotation: Option<Type>,
@@ -370,29 +369,78 @@ pub enum Stmt {
         is_mutable: bool,
         span: Span,
     },
-    
-    /// Assignment statements
+    /// Assignment: lvalue = expr;
     Assignment {
         target: Expr,
         value: Expr,
         span: Span,
     },
-    
-    /// Compound assignment (+=, -=, etc.)
+    /// Compound assignment: lvalue op= expr;
     CompoundAssignment {
         target: Expr,
         op: BinaryOp,
         value: Expr,
         span: Span,
     },
-    
-    /// Item declarations (functions, structs, etc.)
+    /// If statement: if expr block [else block]
+    If {
+        condition: Expr,
+        then_block: Vec<Stmt>,
+        else_block: Option<Box<Stmt>>,
+        span: Span,
+    },
+    /// While loop: while expr block
+    While {
+        condition: Expr,
+        body: Vec<Stmt>,
+        span: Span,
+    },
+    /// For loop: for pattern in expr block
+    For {
+        pattern: Pattern,
+        iterable: Expr,
+        body: Vec<Stmt>,
+        span: Span,
+    },
+    /// Infinite loop: [label:] loop block
+    Loop {
+        label: Option<InternedString>,
+        body: Vec<Stmt>,
+        span: Span,
+    },
+    /// Match statement: match expr { arms }
+    Match {
+        expr: Expr,
+        arms: Vec<MatchArm>,
+        span: Span,
+    },
+    /// Break statement: break [label] [expr];
+    Break {
+        label: Option<InternedString>,
+        expr: Option<Expr>,
+        span: Span,
+    },
+    /// Continue statement: continue [label];
+    Continue {
+        label: Option<InternedString>,
+        span: Span,
+    },
+    /// Return statement: return [expr];
+    Return {
+        expr: Option<Expr>,
+        span: Span,
+    },
+    /// Block statement: { statements... }
+    Block {
+        statements: Vec<Stmt>,
+        span: Span,
+    },
+    /// Item declaration
     Item {
         item: Item,
         span: Span,
     },
-    
-    /// Empty statements (just semicolons)
+    /// Empty statement
     Empty {
         span: Span,
     },
@@ -817,15 +865,63 @@ impl Expr {
 }
 
 impl Stmt {
-    /// Get the span of any statement
+    /// Get the span of this statement
     pub fn span(&self) -> Span {
         match self {
             Stmt::Expression { span, .. } => *span,
             Stmt::Let { span, .. } => *span,
             Stmt::Assignment { span, .. } => *span,
             Stmt::CompoundAssignment { span, .. } => *span,
+            Stmt::If { span, .. } => *span,
+            Stmt::While { span, .. } => *span,
+            Stmt::For { span, .. } => *span,
+            Stmt::Loop { span, .. } => *span,
+            Stmt::Match { span, .. } => *span,
+            Stmt::Break { span, .. } => *span,
+            Stmt::Continue { span, .. } => *span,
+            Stmt::Return { span, .. } => *span,
+            Stmt::Block { span, .. } => *span,
             Stmt::Item { span, .. } => *span,
             Stmt::Empty { span, .. } => *span,
+        }
+    }
+    
+    /// Check if this statement is an expression statement
+    pub fn is_expression(&self) -> bool {
+        matches!(self, Stmt::Expression { .. })
+    }
+    
+    /// Check if this statement has side effects
+    pub fn has_side_effects(&self) -> bool {
+        match self {
+            Stmt::Expression { expr, .. } => expr.has_side_effects(),
+            Stmt::Let { .. } => true,
+            Stmt::Assignment { .. } => true,
+            Stmt::CompoundAssignment { .. } => true,
+            Stmt::If { condition, then_block, else_block, .. } => {
+                condition.has_side_effects() ||
+                then_block.iter().any(|s| s.has_side_effects()) ||
+                else_block.as_ref().map_or(false, |s| s.has_side_effects())
+            },
+            Stmt::While { condition, body, .. } => {
+                condition.has_side_effects() || body.iter().any(|s| s.has_side_effects())
+            },
+            Stmt::For { iterable, body, .. } => {
+                iterable.has_side_effects() || body.iter().any(|s| s.has_side_effects())
+            },
+            Stmt::Loop { body, .. } => body.iter().any(|s| s.has_side_effects()),
+            Stmt::Match { expr, arms, .. } => {
+                expr.has_side_effects() || arms.iter().any(|arm| {
+                    arm.guard.as_ref().map_or(false, |g| g.has_side_effects()) ||
+                    arm.body.has_side_effects()
+                })
+            },
+            Stmt::Break { expr, .. } => expr.as_ref().map_or(false, |e| e.has_side_effects()),
+            Stmt::Continue { .. } => false,
+            Stmt::Return { expr, .. } => expr.as_ref().map_or(false, |e| e.has_side_effects()),
+            Stmt::Block { statements, .. } => statements.iter().any(|s| s.has_side_effects()),
+            Stmt::Item { .. } => true,
+            Stmt::Empty { .. } => false,
         }
     }
 }
