@@ -43,7 +43,7 @@ impl Span {
 }
 
 /// Interned string for efficient storage of identifiers and literals
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct InternedString {
     pub id: u32,
 }

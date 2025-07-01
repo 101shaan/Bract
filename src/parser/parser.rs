@@ -1,7 +1,7 @@
 //! Main parser implementation for the Prism programming language
 
 use crate::lexer::{Lexer, Token, TokenType, Position};
-use crate::ast::*;
+use crate::ast::{Module, Item, Expr, Stmt, Pattern, Type, Span, Visibility, Parameter, InternedString, BinaryOp, UnaryOp, Literal, FieldInit, MatchArm, StructFields, StructField, EnumVariant, ImplItem, GenericParam, PrimitiveType};
 use super::error::{ParseError, ParseResult};
 use std::collections::HashMap;
 

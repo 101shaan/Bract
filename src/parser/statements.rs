@@ -9,7 +9,7 @@
 //! - Block statements
 
 use crate::lexer::{TokenType, Token};
-use crate::ast::*;
+use crate::ast::{Stmt, Expr, Pattern, Type, Span, BinaryOp, InternedString, MatchArm};
 use super::parser::Parser;
 use super::error::{ParseError, ParseResult};
 

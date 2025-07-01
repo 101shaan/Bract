@@ -13,7 +13,7 @@
 //! - Inferred types _
 
 use crate::lexer::{TokenType, position::Position};
-use crate::ast::*;
+use crate::ast::{Type, Expr, Span, PrimitiveType, InternedString};
 use super::parser::Parser;
 use super::error::{ParseError, ParseResult};
 

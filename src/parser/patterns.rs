@@ -13,7 +13,7 @@
 //! - Range patterns (1..10)
 
 use crate::lexer::{TokenType, position::Position};
-use crate::ast::*;
+use crate::ast::{Pattern, Literal, Span, InternedString, FieldPattern};
 use super::parser::Parser;
 use super::error::{ParseError, ParseResult};
 

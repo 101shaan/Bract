@@ -1,7 +1,7 @@
 //! Expression parsing with operator precedence for Prism
 
 use crate::lexer::TokenType;
-use crate::ast::*;
+use crate::ast::{Expr, Stmt, Type, Span, BinaryOp, UnaryOp, Literal, InternedString, FieldInit, MatchArm, Pattern};
 use super::parser::Parser;
 use super::error::{ParseError, ParseResult};
 

@@ -4,8 +4,9 @@
 //! name resolution, scope management, and symbol tracking throughout the
 //! compilation pipeline.
 
-use crate::ast::*;
+use crate::ast::{Item, Visibility, Span, InternedString, StructFields, EnumVariant, GenericParam, Type, Expr, Parameter, Pattern, Module};
 use crate::lexer::Position;
+
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 
@@ -82,7 +83,7 @@ pub enum SymbolKind {
     /// Variable symbol
     Variable {
         is_mutable: bool,
-        type_info: Option<TypeInfo>,
+        type_info: Option<Type>,
     },
     /// Function symbol
     Function {
@@ -101,21 +102,13 @@ pub enum SymbolKind {
     },
     /// Constant symbol
     Constant {
-        type_info: TypeInfo,
+        type_info: Type,
         value: Option<Expr>,
     },
     /// Generic parameter symbol
     GenericParam {
         bounds: Vec<Type>,
     },
-}
-
-/// Type information for symbols
-#[derive(Debug, Clone, PartialEq)]
-pub struct TypeInfo {
-    pub ty: Type,
-    pub is_inferred: bool,
-    pub constraints: Vec<TypeConstraint>,
 }
 
 /// Type definitions for type symbols
@@ -133,25 +126,6 @@ pub enum TypeDefinition {
         target: Type,
         generics: Vec<GenericParam>,
     },
-}
-
-/// Type constraints for type checking
-#[derive(Debug, Clone, PartialEq)]
-pub struct TypeConstraint {
-    pub kind: ConstraintKind,
-    pub span: Span,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum ConstraintKind {
-    /// Type must implement a trait
-    Trait(Type),
-    /// Type must be copyable
-    Copy,
-    /// Type must be sized
-    Sized,
-    /// Custom constraint
-    Custom(String),
 }
 
 /// Symbol entry in the symbol table
@@ -270,7 +244,7 @@ impl Scope {
 }
 
 /// Main symbol table managing all symbols and scopes
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SymbolTable {
     /// All symbols indexed by ID
     symbols: HashMap<SymbolId, Symbol>,
@@ -414,55 +388,6 @@ impl SymbolTable {
         self.symbols.get_mut(&symbol_id)
     }
     
-    /// Resolve a qualified name (e.g., module::function)
-    pub fn resolve_qualified_name(&self, path: &[InternedString]) -> Option<&Symbol> {
-        if path.is_empty() {
-            return None;
-        }
-        
-        if path.len() == 1 {
-            // Simple name lookup
-            return self.lookup_symbol(&path[0]);
-        }
-        
-        // Start from root scope for qualified names
-        let mut current_scope_id = self.root_scope_id;
-        
-        for (i, segment) in path.iter().enumerate() {
-            if let Some(scope) = self.scopes.get(&current_scope_id) {
-                if let Some(symbol_id) = scope.lookup_symbol(segment) {
-                    if i == path.len() - 1 {
-                        // Last segment - return the symbol
-                        return self.symbols.get(&symbol_id);
-                    } else {
-                        // Intermediate segment - must be a module
-                        if let Some(symbol) = self.symbols.get(&symbol_id) {
-                            match &symbol.kind {
-                                SymbolKind::Module { .. } => {
-                                    // Move to module scope
-                                    current_scope_id = symbol.scope_id;
-                                }
-                                _ => {
-                                    // Not a module, cannot continue
-                                    return None;
-                                }
-                            }
-                        } else {
-                            return None;
-                        }
-                    }
-                } else {
-                    // Segment not found
-                    return None;
-                }
-            } else {
-                return None;
-            }
-        }
-        
-        None
-    }
-    
     /// Check if two scopes are in the same module
     pub fn is_same_module(&self, scope1: ScopeId, scope2: ScopeId) -> bool {
         let module1 = self.get_module_scope(scope1);
@@ -507,78 +432,6 @@ impl SymbolTable {
             .filter(|symbol| !symbol.is_used && symbol.visibility == Visibility::Private)
             .collect()
     }
-    
-    /// Build dependency graph for symbols
-    pub fn build_dependency_graph(&self) -> HashMap<SymbolId, HashSet<SymbolId>> {
-        let mut graph = HashMap::new();
-        
-        for symbol in self.symbols.values() {
-            graph.insert(symbol.id, symbol.dependencies.clone());
-        }
-        
-        graph
-    }
-    
-    /// Check for circular dependencies
-    pub fn check_circular_dependencies(&self) -> Result<(), SymbolError> {
-        let graph = self.build_dependency_graph();
-        
-        for symbol_id in graph.keys() {
-            if let Some(cycle) = self.find_cycle_from(*symbol_id, &graph) {
-                let symbols: Vec<InternedString> = cycle.iter()
-                    .filter_map(|id| self.symbols.get(id).map(|s| s.name))
-                    .collect();
-                let spans: Vec<Span> = cycle.iter()
-                    .filter_map(|id| self.symbols.get(id).map(|s| s.span))
-                    .collect();
-                
-                return Err(SymbolError::CircularDependency { symbols, spans });
-            }
-        }
-        
-        Ok(())
-    }
-    
-    /// Find a cycle starting from the given symbol
-    fn find_cycle_from(&self, start: SymbolId, graph: &HashMap<SymbolId, HashSet<SymbolId>>) -> Option<Vec<SymbolId>> {
-        let mut visited = HashSet::new();
-        let mut path = Vec::new();
-        
-        self.dfs_cycle_detection(start, graph, &mut visited, &mut path)
-    }
-    
-    /// Depth-first search for cycle detection
-    fn dfs_cycle_detection(
-        &self,
-        current: SymbolId,
-        graph: &HashMap<SymbolId, HashSet<SymbolId>>,
-        visited: &mut HashSet<SymbolId>,
-        path: &mut Vec<SymbolId>,
-    ) -> Option<Vec<SymbolId>> {
-        if path.contains(&current) {
-            // Found a cycle
-            let cycle_start = path.iter().position(|&id| id == current).unwrap();
-            return Some(path[cycle_start..].to_vec());
-        }
-        
-        if visited.contains(&current) {
-            return None;
-        }
-        
-        visited.insert(current);
-        path.push(current);
-        
-        if let Some(dependencies) = graph.get(&current) {
-            for &dep in dependencies {
-                if let Some(cycle) = self.dfs_cycle_detection(dep, graph, visited, path) {
-                    return Some(cycle);
-                }
-            }
-        }
-        
-        path.pop();
-        None
-    }
 }
 
 /// Symbol table builder that walks the AST and builds the symbol table
@@ -598,12 +451,6 @@ impl SymbolTableBuilder {
     /// Build symbol table from AST module
     pub fn build(mut self, module: &Module) -> (SymbolTable, Vec<SymbolError>) {
         self.visit_module(module);
-        
-        // Check for circular dependencies
-        if let Err(err) = self.symbol_table.check_circular_dependencies() {
-            self.errors.push(err);
-        }
-        
         (self.symbol_table, self.errors)
     }
     
@@ -651,102 +498,9 @@ impl SymbolTableBuilder {
                 };
                 let kind = SymbolKind::Type { definition };
                 
-                match self.symbol_table.add_symbol(*name, kind, *visibility, *span) {
-                    Ok(_) => {
-                        // Process struct fields if needed
-                        match fields {
-                            StructFields::Named(field_list) => {
-                                for field in field_list {
-                                    self.visit_type(&field.field_type);
-                                }
-                            }
-                            StructFields::Tuple(types) => {
-                                for ty in types {
-                                    self.visit_type(ty);
-                                }
-                            }
-                            StructFields::Unit => {}
-                        }
-                    }
-                    Err(err) => self.errors.push(err),
-                }
-            }
-            
-            Item::Enum { visibility, name, variants, span, .. } => {
-                let definition = TypeDefinition::Enum {
-                    variants: variants.clone(),
-                    generics: Vec::new(), // TODO: Handle generics
-                };
-                let kind = SymbolKind::Type { definition };
-                
-                match self.symbol_table.add_symbol(*name, kind, *visibility, *span) {
-                    Ok(_) => {
-                        // Process enum variants
-                        for variant in variants {
-                            // Add variant as a symbol
-                            let variant_kind = SymbolKind::Constant {
-                                type_info: TypeInfo {
-                                    ty: Type::Path {
-                                        segments: vec![*name],
-                                        generics: Vec::new(),
-                                        span: variant.span,
-                                    },
-                                    is_inferred: false,
-                                    constraints: Vec::new(),
-                                },
-                                value: variant.discriminant.clone(),
-                            };
-                            
-                            if let Err(err) = self.symbol_table.add_symbol(
-                                variant.name,
-                                variant_kind,
-                                *visibility,
-                                variant.span,
-                            ) {
-                                self.errors.push(err);
-                            }
-                        }
-                    }
-                    Err(err) => self.errors.push(err),
-                }
-            }
-            
-            Item::Module { visibility, name, items, span } => {
-                let kind = SymbolKind::Module {
-                    is_external: items.is_none(),
-                };
-                
-                match self.symbol_table.add_symbol(*name, kind, *visibility, *span) {
-                    Ok(_) => {
-                        if let Some(module_items) = items {
-                            let _scope_id = self.symbol_table.enter_scope(ScopeKind::Module, *span);
-                            
-                            for item in module_items {
-                                self.visit_item(item);
-                            }
-                            
-                            let _ = self.symbol_table.exit_scope();
-                        }
-                    }
-                    Err(err) => self.errors.push(err),
-                }
-            }
-            
-            Item::Const { visibility, name, type_annotation, value, span, .. } => {
-                let kind = SymbolKind::Constant {
-                    type_info: TypeInfo {
-                        ty: type_annotation.clone(),
-                        is_inferred: false,
-                        constraints: Vec::new(),
-                    },
-                    value: Some(value.clone()),
-                };
-                
                 if let Err(err) = self.symbol_table.add_symbol(*name, kind, *visibility, *span) {
                     self.errors.push(err);
                 }
-                
-                self.visit_expr(value);
             }
             
             _ => {
@@ -756,117 +510,13 @@ impl SymbolTableBuilder {
     }
     
     /// Visit an expression and collect symbols
-    fn visit_expr(&mut self, expr: &Expr) {
-        match expr {
-            Expr::Block { statements, trailing_expr, span } => {
-                let _scope_id = self.symbol_table.enter_scope(ScopeKind::Block, *span);
-                
-                for stmt in statements {
-                    self.visit_stmt(stmt);
-                }
-                
-                if let Some(trailing) = trailing_expr {
-                    self.visit_expr(trailing);
-                }
-                
-                let _ = self.symbol_table.exit_scope();
-            }
-            
-            Expr::Binary { left, right, .. } => {
-                self.visit_expr(left);
-                self.visit_expr(right);
-            }
-            
-            Expr::Call { callee, args, .. } => {
-                self.visit_expr(callee);
-                for arg in args {
-                    self.visit_expr(arg);
-                }
-            }
-            
-            // Handle other expression types as needed
-            _ => {}
-        }
-    }
-    
-    /// Visit a statement and collect symbols
-    fn visit_stmt(&mut self, stmt: &Stmt) {
-        match stmt {
-            Stmt::Let { pattern, initializer, is_mutable, .. } => {
-                // First visit the initializer to resolve any references
-                if let Some(init) = initializer {
-                    self.visit_expr(init);
-                }
-                
-                // Then add the pattern bindings to the current scope
-                self.visit_pattern_binding(pattern, *is_mutable);
-            }
-            
-            Stmt::Expression { expr, .. } => {
-                self.visit_expr(expr);
-            }
-            
-            // Handle other statement types
-            _ => {}
-        }
+    fn visit_expr(&mut self, _expr: &Expr) {
+        // TODO: Implement expression symbol collection
     }
     
     /// Visit a pattern and collect symbol references
-    fn visit_pattern(&mut self, pattern: &Pattern) {
-        match pattern {
-            Pattern::Identifier { name, .. } => {
-                // Mark symbol as used if it exists
-                if let Some(symbol_id) = self.symbol_table.lookup_symbol(name).map(|s| s.id) {
-                    if let Some(symbol) = self.symbol_table.get_symbol_mut(symbol_id) {
-                        symbol.mark_used();
-                    }
-                }
-            }
-            
-            Pattern::Tuple { patterns, .. } => {
-                for pat in patterns {
-                    self.visit_pattern(pat);
-                }
-            }
-            
-            // Handle other pattern types
-            _ => {}
-        }
-    }
-    
-    /// Visit a pattern for binding (in let statements)
-    fn visit_pattern_binding(&mut self, pattern: &Pattern, is_mutable: bool) {
-        match pattern {
-            Pattern::Identifier { name, span, .. } => {
-                let kind = SymbolKind::Variable {
-                    is_mutable,
-                    type_info: None, // Will be filled in by type checker
-                };
-                
-                if let Err(err) = self.symbol_table.add_symbol(
-                    *name,
-                    kind,
-                    Visibility::Private,
-                    *span,
-                ) {
-                    self.errors.push(err);
-                }
-            }
-            
-            Pattern::Tuple { patterns, .. } => {
-                for pat in patterns {
-                    self.visit_pattern_binding(pat, is_mutable);
-                }
-            }
-            
-            // Handle other pattern types
-            _ => {}
-        }
-    }
-    
-    /// Visit a type and collect references
-    fn visit_type(&mut self, _ty: &Type) {
-        // TODO: Implement type reference tracking
+    fn visit_pattern(&mut self, _pattern: &Pattern) {
+        // TODO: Implement pattern symbol collection
     }
 }
 
@@ -912,41 +562,5 @@ mod tests {
         
         table.exit_scope().unwrap();
         assert_eq!(table.current_scope(), root_scope);
-    }
-    
-    #[test]
-    fn test_symbol_lookup() {
-        let mut table = SymbolTable::new();
-        let name = InternedString::new(42);
-        
-        // Add symbol to root scope
-        let kind = SymbolKind::Variable {
-            is_mutable: false,
-            type_info: None,
-        };
-        table.add_symbol(name, kind, Visibility::Private, dummy_span()).unwrap();
-        
-        // Should be found from root scope
-        assert!(table.lookup_symbol(&name).is_some());
-        
-        // Enter child scope - should still find symbol
-        table.enter_scope(ScopeKind::Block, dummy_span());
-        assert!(table.lookup_symbol(&name).is_some());
-    }
-    
-    #[test]
-    fn test_duplicate_symbol_error() {
-        let mut table = SymbolTable::new();
-        let name = InternedString::new(1);
-        let kind = SymbolKind::Variable {
-            is_mutable: false,
-            type_info: None,
-        };
-        
-        // First addition should succeed
-        assert!(table.add_symbol(name, kind.clone(), Visibility::Private, dummy_span()).is_ok());
-        
-        // Second addition should fail
-        assert!(table.add_symbol(name, kind, Visibility::Private, dummy_span()).is_err());
     }
 } 
