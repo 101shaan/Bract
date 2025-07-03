@@ -425,11 +425,12 @@ impl<'a> ExpressionGenerator<'a> {
     /// Generate break statement
     fn generate_break(&mut self, label: &Option<InternedString>, value: Option<&Expr>) -> CodegenResult<String> {
         if let Some(loop_ctx) = self.context.current_loop() {
+            let break_label = loop_ctx.break_label.clone(); // Extract label before mutable borrow
             if let Some(value) = value {
                 let value_code = self.generate_expression(value)?;
-                Ok(format!("{{ break_value = {}; goto {}; }}", value_code, loop_ctx.break_label))
+                Ok(format!("{{ break_value = {}; goto {}; }}", value_code, break_label))
             } else {
-                Ok(format!("goto {}", loop_ctx.break_label))
+                Ok(format!("goto {}", break_label))
             }
         } else {
             Err(CodegenError::InternalError("Break outside of loop".to_string()))

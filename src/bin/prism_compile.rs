@@ -6,7 +6,10 @@
 use prism::{
     Lexer, Parser,
     semantic::{SemanticAnalyzer, SymbolTable},
-    codegen::{CCodeGenerator, CodegenResult, CodegenError},
+    codegen::{
+        CCodeGenerator, CodegenResult, CodegenError,
+        build::{BuildSystem, BuildConfigBuilder, CCompiler}
+    },
 };
 use std::env;
 use std::fs;
