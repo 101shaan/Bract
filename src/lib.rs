@@ -4,6 +4,7 @@ pub mod ast;
 pub mod parser;
 pub mod visitor;
 pub mod codegen;
+pub mod lsp;
 
 pub use lexer::{Lexer, Token, TokenType, Position, LexerError};
 pub use ast::{Module, Expr, Stmt, Item, Pattern, Type, Span};

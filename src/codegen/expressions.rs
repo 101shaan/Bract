@@ -5,14 +5,14 @@
 
 use super::{CodegenContext, CCodeBuilder, CodegenResult, CodegenError};
 use crate::ast::*;
-use std::fmt::Write;
+// Removed unused import
 
 /// Expression code generator
 pub struct ExpressionGenerator<'a> {
     /// Generation context
     context: &'a mut CodegenContext,
     /// Code builder for temporary code
-    temp_builder: CCodeBuilder,
+    _temp_builder: CCodeBuilder,
 }
 
 impl<'a> ExpressionGenerator<'a> {
@@ -20,7 +20,7 @@ impl<'a> ExpressionGenerator<'a> {
     pub fn new(context: &'a mut CodegenContext) -> Self {
         Self {
             context,
-            temp_builder: CCodeBuilder::new(),
+            _temp_builder: CCodeBuilder::new(),
         }
     }
     
@@ -152,7 +152,7 @@ impl<'a> ExpressionGenerator<'a> {
                 
                 Ok(result)
             },
-            Literal::String { value, raw, raw_delimiter } => {
+            Literal::String { value, raw: _, raw_delimiter: _ } => {
                 // For now, generate a simple string literal
                 // In a real implementation, this would handle escape sequences
                 Ok(format!("\"{}\"", self.format_identifier(value)))
@@ -340,12 +340,12 @@ impl<'a> ExpressionGenerator<'a> {
     fn generate_block_expression(&mut self, statements: &[Stmt], trailing_expr: Option<&Expr>) -> CodegenResult<String> {
         // For block expressions, we need to use a statement expression (GCC extension)
         // or generate a temporary function
-        let temp_var = self.context.temp_var();
+        let _temp_var = self.context.temp_var();
         
         let mut code = format!("({{ ");
         
         // Generate statements
-        for stmt in statements {
+        for _stmt in statements {
             // This would need to be implemented in statements.rs
             code.push_str("/* statement */; ");
         }
@@ -423,7 +423,7 @@ impl<'a> ExpressionGenerator<'a> {
     }
     
     /// Generate break statement
-    fn generate_break(&mut self, label: &Option<InternedString>, value: Option<&Expr>) -> CodegenResult<String> {
+    fn generate_break(&mut self, _label: &Option<InternedString>, value: Option<&Expr>) -> CodegenResult<String> {
         if let Some(loop_ctx) = self.context.current_loop() {
             let break_label = loop_ctx.break_label.clone(); // Extract label before mutable borrow
             if let Some(value) = value {
@@ -438,7 +438,7 @@ impl<'a> ExpressionGenerator<'a> {
     }
     
     /// Generate continue statement
-    fn generate_continue(&mut self, label: &Option<InternedString>) -> CodegenResult<String> {
+    fn generate_continue(&mut self, _label: &Option<InternedString>) -> CodegenResult<String> {
         if let Some(loop_ctx) = self.context.current_loop() {
             Ok(format!("goto {}", loop_ctx.continue_label))
         } else {

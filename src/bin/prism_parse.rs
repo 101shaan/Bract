@@ -2,7 +2,7 @@
 //! 
 //! Usage: cargo run --bin prism_parse -- "expression or code"
 
-use prism::{Parser, ParseError};
+use prism::Parser;
 use std::env;
 
 fn main() {

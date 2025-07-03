@@ -7,7 +7,7 @@ use std::collections::HashMap;
 /// The Lexer is responsible for converting source code into tokens
 pub struct Lexer<'a> {
     /// The input source code
-    input: &'a str,
+    _input: &'a str,
     /// The characters of the input
     chars: std::str::Chars<'a>,
     /// The current position in the input
@@ -29,7 +29,7 @@ impl<'a> Lexer<'a> {
         let current_char = chars.next();
         
         Self {
-            input,
+            _input: input,
             chars,
             current_pos: 0,
             current_char,
@@ -195,7 +195,7 @@ impl<'a> Lexer<'a> {
     
     /// Skip a line comment and return the comment text if include_comments is true
     fn skip_line_comment(&mut self) -> Option<TokenType> {
-        let start_pos = self.position;
+        let _start_pos = self.position;
         let mut comment = String::new();
         let is_doc_comment = self.peek() == Some('/');
         
@@ -435,7 +435,7 @@ impl<'a> Lexer<'a> {
         let mut value = String::new();
         let mut base = NumberBase::Decimal;
         let mut is_float = false;
-        let mut has_exponent = false;
+        let mut _has_exponent = false;
         let mut suffix = None;
         
         // Check for hex, octal, or binary prefix
@@ -577,7 +577,7 @@ impl<'a> Lexer<'a> {
                 value.push(self.current_char.unwrap());
                 self.advance();
                 is_float = true;
-                has_exponent = true;
+                _has_exponent = true;
                 
                 // Check for exponent sign
                 if let Some('+') | Some('-') = self.current_char {

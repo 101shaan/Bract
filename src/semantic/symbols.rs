@@ -259,7 +259,7 @@ pub struct SymbolTable {
     /// Root scope (global/module scope)
     root_scope_id: ScopeId,
     /// Module hierarchy for visibility checking
-    module_hierarchy: HashMap<ScopeId, ScopeId>,
+    _module_hierarchy: HashMap<ScopeId, ScopeId>,
 }
 
 impl SymbolTable {
@@ -283,7 +283,7 @@ impl SymbolTable {
             next_symbol_id: 0,
             next_scope_id: 1,
             root_scope_id,
-            module_hierarchy: HashMap::new(),
+            _module_hierarchy: HashMap::new(),
         }
     }
     

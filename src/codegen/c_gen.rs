@@ -76,7 +76,7 @@ impl CCodeGenerator {
         // First pass: collect all type and function declarations
         for item in &module.items {
             match item {
-                Item::Function { name, .. } => {
+                Item::Function { .. } => {
                     // Function forward declarations will be generated during function processing
                 },
                 Item::Struct { name, .. } => {
@@ -240,6 +240,7 @@ impl CCodeGenerator {
     }
 
     /// Generate function body (legacy method for compatibility)
+    #[allow(dead_code)]
     fn generate_function_body(&mut self, body: &Expr, builder: &mut CCodeBuilder) -> CodegenResult<()> {
         Self::generate_function_body_impl(body, &mut self.context, builder)
     }
@@ -393,9 +394,10 @@ impl CCodeGenerator {
     }
     
     /// Generate code for a statement (placeholder)
-    fn generate_statement(&mut self, stmt: &Stmt, builder: &mut CCodeBuilder) -> CodegenResult<()> {
+    #[allow(dead_code)]
+    fn generate_statement(&mut self, _stmt: &Stmt, _builder: &mut CCodeBuilder) -> CodegenResult<()> {
         // This will be implemented in statements.rs
-        builder.comment("Statement generation not yet implemented");
+        _builder.comment("Statement generation not yet implemented");
         Ok(())
     }
     

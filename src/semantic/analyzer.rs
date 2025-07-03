@@ -218,7 +218,7 @@ impl SemanticAnalyzer {
         
         match type_checker.check_module(module) {
             Ok(()) => {
-                let mut expression_types = HashMap::new();
+                let expression_types = HashMap::new();
                 
                 // Extract expression types from type checker
                 // Note: This would require additional API in TypeChecker to extract all types

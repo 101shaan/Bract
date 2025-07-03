@@ -1,7 +1,7 @@
 //! Expression parsing with operator precedence for Prism
 
 use crate::lexer::TokenType;
-use crate::ast::{Expr, Stmt, Type, Span, BinaryOp, UnaryOp, Literal, InternedString, FieldInit, MatchArm, Pattern};
+use crate::ast::{Expr, Span, BinaryOp, UnaryOp, Literal};
 use super::parser::Parser;
 use super::error::{ParseError, ParseResult};
 
@@ -180,7 +180,7 @@ impl<'a> Parser<'a> {
     
     /// Parse range expressions (.. and ..=)
     pub fn parse_range_expression(&mut self) -> ParseResult<Expr> {
-        let mut expr = self.parse_additive_expression()?;
+        let expr = self.parse_additive_expression()?;
         
         if let Some(token) = &self.current_token {
             match &token.token_type {

@@ -62,7 +62,7 @@ impl StatementGenerator {
             Stmt::Block { statements, .. } => {
                 self.generate_block_statement(statements, context, builder)
             },
-            Stmt::Item { item, .. } => {
+            Stmt::Item { .. } => {
                 // Items within statements are handled separately
                 builder.comment("Item within statement - handled separately");
                 Ok(())
@@ -455,9 +455,9 @@ impl StatementGenerator {
     fn generate_tuple_destructuring(
         &mut self,
         patterns: &[Pattern],
-        type_annotation: &Option<Type>,
+        _type_annotation: &Option<Type>,
         initializer: &Option<Expr>,
-        is_mutable: bool,
+        _is_mutable: bool,
         context: &mut CodegenContext,
         builder: &mut CCodeBuilder
     ) -> CodegenResult<()> {
@@ -488,11 +488,11 @@ impl StatementGenerator {
     /// Generate struct destructuring  
     fn generate_struct_destructuring(
         &mut self,
-        path: &[InternedString],
+        _path: &[InternedString],
         fields: &[FieldPattern],
-        type_annotation: &Option<Type>,
+        _type_annotation: &Option<Type>,
         initializer: &Option<Expr>,
-        is_mutable: bool,
+        _is_mutable: bool,
         context: &mut CodegenContext,
         builder: &mut CCodeBuilder
     ) -> CodegenResult<()> {
@@ -527,7 +527,7 @@ impl StatementGenerator {
     }
     
     /// Generate pattern matching code
-    fn generate_pattern_match(&mut self, pattern: &Pattern, expr_var: &str) -> CodegenResult<String> {
+    fn generate_pattern_match(&mut self, pattern: &Pattern, _expr_var: &str) -> CodegenResult<String> {
         match pattern {
             Pattern::Literal { literal, .. } => {
                 match literal {

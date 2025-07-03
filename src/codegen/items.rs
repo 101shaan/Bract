@@ -4,9 +4,8 @@
 //! functions, structs, enums, constants, and modules.
 
 use crate::ast::*;
-use crate::semantic::SymbolTable;
 use super::{CodegenContext, CodegenResult, CodegenError, CCodeBuilder, CodegenMetrics};
-use std::collections::HashMap;
+// Removed unused import
 
 /// Item generator handles code generation for top-level items
 pub struct ItemGenerator<'a> {
@@ -62,7 +61,7 @@ impl<'a> ItemGenerator<'a> {
 
         for item in items {
             match item {
-                Item::Function { name, .. } => {
+                Item::Function { .. } => {
                     // Function forward declarations will be generated during function processing
                 },
                 Item::Struct { name, .. } => {

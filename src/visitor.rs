@@ -562,7 +562,7 @@ pub mod utils {
     
     /// Count nodes in an AST
     pub fn count_nodes(module: &Module) -> usize {
-        let mut counter = NodeCounter::new();
+        let counter = NodeCounter::new();
         let mut ctx = VisitorContext::new();
         let mut walker = AstWalker::new(counter, TraversalOrder::PreOrder);
         
@@ -574,7 +574,7 @@ pub mod utils {
     
     /// Extract all identifiers from an AST
     pub fn extract_identifiers(module: &Module) -> Vec<InternedString> {
-        let mut extractor = IdentifierExtractor::new();
+        let extractor = IdentifierExtractor::new();
         let mut ctx = VisitorContext::new();
         let mut walker = AstWalker::new(extractor, TraversalOrder::PreOrder);
         

@@ -1,7 +1,7 @@
 //! Main parser implementation for the Prism programming language
 
 use crate::lexer::{Lexer, Token, TokenType, Position};
-use crate::ast::{Module, Item, Expr, Stmt, Pattern, Type, Span, Visibility, Parameter, InternedString, BinaryOp, UnaryOp, Literal, FieldInit, MatchArm, StructFields, StructField, EnumVariant, ImplItem, GenericParam, PrimitiveType};
+use crate::ast::{Module, Item, Expr, Stmt, Span, Visibility, Parameter, InternedString};
 use super::error::{ParseError, ParseResult};
 use std::collections::HashMap;
 
@@ -103,7 +103,7 @@ impl<'a> Parser<'a> {
     }
     
     /// Expect a specific token type and consume it, or return an error
-    pub fn expect(&mut self, expected: TokenType, context: &str) -> ParseResult<Token> {
+    pub fn expect(&mut self, expected: TokenType, _context: &str) -> ParseResult<Token> {
         if let Some(token) = &self.current_token {
             if std::mem::discriminant(&token.token_type) == std::mem::discriminant(&expected) {
                 let token = token.clone();

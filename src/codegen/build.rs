@@ -7,7 +7,7 @@ use super::{CodegenResult, CodegenError};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::fs;
-use std::env;
+// Removed unused import
 
 /// C compiler types
 #[derive(Debug, Clone, Copy, PartialEq)]

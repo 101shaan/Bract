@@ -4,16 +4,16 @@
 //! Source Code → Lexing → Parsing → Semantic Analysis → Code Generation → C Compilation
 
 use prism::{
-    Lexer, Parser,
-    semantic::{SemanticAnalyzer, SymbolTable},
+    Parser,
+    semantic::SemanticAnalyzer,
     codegen::{
-        CCodeGenerator, CodegenResult, CodegenError,
+        CCodeGenerator,
         build::{BuildSystem, BuildConfigBuilder, CCompiler}
     },
 };
 use std::env;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process;
 use std::time::Instant;
 
@@ -341,7 +341,7 @@ fn compile_prism_file(args: &Args) -> Result<(), Box<dyn std::error::Error>> {
 }
 
 // Example Prism program for testing
-const EXAMPLE_PRISM_CODE: &str = r#"
+const _EXAMPLE_PRISM_CODE: &str = r#"
 // Example Prism program demonstrating the compiler
 
 fn main() -> i32 {

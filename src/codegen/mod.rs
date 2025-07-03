@@ -10,9 +10,9 @@
 //! - Runtime integration: memory management, error handling, standard library
 
 use crate::ast::*;
-use crate::semantic::{SemanticAnalyzer, SymbolTable};
+use crate::semantic::SymbolTable;
 use std::collections::HashMap;
-use std::fmt::Write;
+// Removed unused import
 
 pub mod c_gen;
 pub mod expressions;
