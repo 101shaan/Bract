@@ -174,13 +174,20 @@ impl CCodeGenerator {
             self.context.enter_scope();
             
             if let Some(body_expr) = body {
-                self.builder.function(&signature, |builder| {
-                    // Generate function body
-                    if let Err(e) = self.generate_function_body(body_expr, builder) {
-                        // Error handling in closure - we'll propagate this up
-                        eprintln!("Error generating function body: {}", e);
-                    }
-                });
+                // Generate function signature and opening
+                self.builder.line(&format!("{} {{", signature));
+                self.builder.indent_inc();
+                
+                // Generate function body
+                if let Err(e) = Self::generate_function_body_impl(body_expr, &mut self.context, &mut self.builder) {
+                    eprintln!("Error generating function body: {}", e);
+                    return Err(e);
+                }
+                
+                // Close function
+                self.builder.indent_dec();
+                self.builder.line("}");
+                self.builder.newline();
             } else {
                 // External function declaration
                 self.builder.header_context();
@@ -197,29 +204,44 @@ impl CCodeGenerator {
         Ok(())
     }
     
-    /// Generate function body
-    fn generate_function_body(&mut self, body: &Expr, builder: &mut CCodeBuilder) -> CodegenResult<()> {
+    /// Generate function body (static method to avoid borrowing conflicts)
+    fn generate_function_body_impl(
+        body: &Expr,
+        context: &mut CodegenContext,
+        builder: &mut CCodeBuilder
+    ) -> CodegenResult<()> {
+        use super::statements::StatementGenerator;
+        use super::expressions::ExpressionGenerator;
+        
         match body {
             Expr::Block { statements, trailing_expr, .. } => {
                 // Generate statements
+                let mut stmt_gen = StatementGenerator::new();
                 for stmt in statements {
-                    self.generate_statement(stmt, builder)?;
+                    stmt_gen.generate_statement(stmt, context, builder)?;
                 }
                 
                 // Generate trailing expression as return
                 if let Some(expr) = trailing_expr {
-                    let expr_code = self.generate_expression(expr)?;
+                    let mut expr_gen = ExpressionGenerator::new(context);
+                    let expr_code = expr_gen.generate_expression(expr)?;
                     builder.line(&format!("return {};", expr_code));
                 }
             },
             _ => {
                 // Single expression body
-                let expr_code = self.generate_expression(body)?;
+                let mut expr_gen = ExpressionGenerator::new(context);
+                let expr_code = expr_gen.generate_expression(body)?;
                 builder.line(&format!("return {};", expr_code));
             }
         }
         
         Ok(())
+    }
+
+    /// Generate function body (legacy method for compatibility)
+    fn generate_function_body(&mut self, body: &Expr, builder: &mut CCodeBuilder) -> CodegenResult<()> {
+        Self::generate_function_body_impl(body, &mut self.context, builder)
     }
     
     /// Generate a struct definition
