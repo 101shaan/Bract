@@ -1,0 +1,102 @@
+// Comprehensive Prism Example Program
+// Testing: Lexing → Parsing → Semantic Analysis → Code Generation
+
+// Module declaration
+mod math {
+    // Constants
+    const PI: f64 = 3.14159265359;
+    const E: f64 = 2.71828182846;
+    
+    // Function with parameters and return type
+    pub fn add(a: i32, b: i32) -> i32 {
+        a + b
+    }
+    
+    // Function with floating point
+    pub fn circle_area(radius: f64) -> f64 {
+        PI * radius * radius
+    }
+}
+
+// Struct definition
+struct Point {
+    x: f64,
+    y: f64,
+}
+
+// Enum definition
+enum Color {
+    Red,
+    Green,
+    Blue,
+    RGB(u8, u8, u8),
+}
+
+// Implementation block
+impl Point {
+    pub fn new(x: f64, y: f64) -> Point {
+        Point { x: x, y: y }
+    }
+    
+    pub fn distance(&self, other: &Point) -> f64 {
+        let dx = self.x - other.x;
+        let dy = self.y - other.y;
+        (dx * dx + dy * dy).sqrt()
+    }
+}
+
+// Main function demonstrating various features
+fn main() {
+    // Variable declarations
+    let name = "Prism Language";
+    let version = 1;
+    let mut counter = 0;
+    
+    // Function calls
+    let sum = math::add(10, 20);
+    let area = math::circle_area(5.0);
+    
+    // Struct initialization
+    let origin = Point::new(0.0, 0.0);
+    let point = Point { x: 3.0, y: 4.0 };
+    
+    // Method call
+    let distance = origin.distance(&point);
+    
+    // Control flow - if expression
+    let result = if sum > 25 {
+        "Large sum"
+    } else {
+        "Small sum"
+    };
+    
+    // Loop with counter
+    while counter < 3 {
+        counter = counter + 1;
+    }
+    
+    // Match expression with enum
+    let color = Color::RGB(255, 0, 0);
+    let color_name = match color {
+        Color::Red => "Red",
+        Color::Green => "Green", 
+        Color::Blue => "Blue",
+        Color::RGB(r, g, b) => "Custom RGB",
+    };
+    
+    // Array and iteration
+    let numbers = [1, 2, 3, 4, 5];
+    for num in numbers {
+        // Array element processing
+    }
+    
+    // String operations (placeholder)
+    println!("Welcome to {}", name);
+    println!("Version: {}", version);
+    println!("Sum: {}", sum);
+    println!("Circle area: {}", area);
+    println!("Distance: {}", distance);
+    println!("Result: {}", result);
+    println!("Color: {}", color_name);
+    println!("Counter: {}", counter);
+} 
