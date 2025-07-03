@@ -216,7 +216,7 @@ impl CodegenContext {
 }
 
 /// Efficient C code builder with proper formatting
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CCodeBuilder {
     /// Current indentation level
     indent_level: usize,

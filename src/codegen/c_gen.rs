@@ -48,7 +48,7 @@ impl CCodeGenerator {
         self.metrics.compilation_time_ms = start_time.elapsed().as_millis();
         self.metrics.memory_usage_bytes = self.estimate_memory_usage();
         
-        Ok(self.builder.build())
+        Ok(self.builder.clone().build())
     }
     
     /// Generate includes section

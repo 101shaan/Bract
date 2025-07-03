@@ -10,18 +10,19 @@ use crate::ast::*;
 pub struct StatementGenerator<'a> {
     /// Generation context
     context: &'a mut CodegenContext,
-    /// Expression generator
-    expr_gen: ExpressionGenerator<'a>,
 }
 
 impl<'a> StatementGenerator<'a> {
     /// Create a new statement generator
     pub fn new(context: &'a mut CodegenContext) -> Self {
-        let expr_gen = ExpressionGenerator::new(context);
         Self {
             context,
-            expr_gen,
         }
+    }
+
+    /// Create an expression generator on demand
+    fn create_expr_generator(&mut self) -> ExpressionGenerator {
+        ExpressionGenerator::new(self.context)
     }
     
     /// Generate C code for a statement
@@ -55,13 +56,13 @@ impl<'a> StatementGenerator<'a> {
                 self.generate_match_statement(expr, arms, builder)
             },
             Stmt::Break { label, expr, .. } => {
-                self.generate_break_statement(label, expr.as_deref(), builder)
+                self.generate_break_statement(label, expr.as_ref(), builder)
             },
             Stmt::Continue { label, .. } => {
                 self.generate_continue_statement(label, builder)
             },
             Stmt::Return { expr, .. } => {
-                self.generate_return_statement(expr.as_deref(), builder)
+                self.generate_return_statement(expr.as_ref(), builder)
             },
             Stmt::Block { statements, .. } => {
                 self.generate_block_statement(statements, builder)
@@ -81,7 +82,8 @@ impl<'a> StatementGenerator<'a> {
     
     /// Generate expression statement
     fn generate_expression_statement(&mut self, expr: &Expr, builder: &mut CCodeBuilder) -> CodegenResult<()> {
-        let expr_code = self.expr_gen.generate_expression(expr)?;
+        let mut expr_gen = self.create_expr_generator();
+        let expr_code = expr_gen.generate_expression(expr)?;
         builder.line(&format!("{};", expr_code));
         Ok(())
     }
@@ -113,7 +115,8 @@ impl<'a> StatementGenerator<'a> {
                 
                 // Generate declaration
                 if let Some(init) = initializer {
-                    let init_code = self.expr_gen.generate_expression(init)?;
+                    let mut expr_gen = self.create_expr_generator();
+                    let init_code = expr_gen.generate_expression(init)?;
                     builder.line(&format!("{} {} = {};", type_name, var_name, init_code));
                 } else {
                     builder.line(&format!("{} {};", type_name, var_name));

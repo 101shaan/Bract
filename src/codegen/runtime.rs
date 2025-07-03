@@ -29,7 +29,7 @@ impl RuntimeGenerator {
         // Generate implementation
         self.generate_runtime_implementation()?;
         
-        Ok(self.builder.build())
+        Ok(self.builder.clone().build())
     }
     
     /// Generate runtime header
