@@ -24,6 +24,7 @@ pub struct LspServer {
     /// Server capabilities
     capabilities: ServerCapabilities,
     /// Configuration
+    #[allow(dead_code)]
     config: LspConfig,
     /// Analysis cache for performance
     analysis_cache: Arc<Mutex<AnalysisCache>>,
@@ -370,7 +371,7 @@ impl LspServer {
         let mut errors = Vec::new();
 
         // Lexical analysis
-        let mut lexer = Lexer::new(content, 0);
+        let _lexer = Lexer::new(content, 0);
         
         // Parsing
         let mut parser = match Parser::new(content, 0) {
@@ -496,7 +497,7 @@ mod tests {
 
     #[test]
     fn test_analysis_cache() {
-        let mut cache = AnalysisCache::new();
+        let cache = AnalysisCache::new();
         assert_eq!(cache.stats().hits, 0);
         assert_eq!(cache.stats().misses, 0);
     }

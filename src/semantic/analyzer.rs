@@ -291,10 +291,12 @@ mod tests {
     use super::*;
     use crate::lexer::Position;
     
+    #[allow(dead_code)]
     fn dummy_position() -> Position {
         Position::new(1, 1, 0, 0)
     }
     
+    #[allow(dead_code)]
     fn dummy_span() -> Span {
         Span::single(dummy_position())
     }

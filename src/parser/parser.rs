@@ -759,7 +759,7 @@ impl<'a> Parser<'a> {
             
             if self.check(&TokenType::Fn) {
                 // Parse method
-                if let Ok(Item::Function { name, generics, params, return_type, body, is_extern, .. }) = self.parse_function(item_visibility, item_start) {
+                if let Ok(Item::Function { name, generics, params, return_type, body, is_extern: _, .. }) = self.parse_function(item_visibility, item_start) {
                     items.push(crate::ast::ImplItem::Function {
                         visibility: item_visibility,
                         name,

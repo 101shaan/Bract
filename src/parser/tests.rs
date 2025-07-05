@@ -41,7 +41,7 @@ mod tests {
         assert_eq!(module.items.len(), 1);
         
         match &module.items[0] {
-            Item::Function { name, params, return_type, body, .. } => {
+            Item::Function { name: _, params, return_type, body, .. } => {
                 // We can't easily test the interned string content without access to interner
                 assert!(params.is_empty());
                 assert!(return_type.is_none());
@@ -157,7 +157,7 @@ mod tests {
     fn test_multiple_errors() {
         let input = "fn test( { fn other();";
         let mut parser = Parser::new(input, 0).unwrap();
-        let result = parser.parse_module();
+        let _result = parser.parse_module();
         
         // Should have errors but still return a result due to error recovery
         assert!(!parser.errors().is_empty());
@@ -177,7 +177,7 @@ mod tests {
                 assert!(!is_mutable);
                 assert!(type_annotation.is_none());
                 assert!(initializer.is_some());
-                if let Some(Pattern::Identifier { name, .. }) = Some(pattern) {
+                if let Some(Pattern::Identifier { name: _, .. }) = Some(pattern) {
                     // Pattern parsing will be implemented later
                 }
             }

@@ -1,8 +1,7 @@
 #[cfg(test)]
 mod tests {
     use crate::lexer::lexer::Lexer;
-    use crate::lexer::token::{Token, TokenType, NumberBase};
-    use crate::lexer::position::Position;
+    use crate::lexer::token::{TokenType, NumberBase};
     
     // Helper function to create a test lexer
     fn create_lexer(input: &str) -> Lexer {

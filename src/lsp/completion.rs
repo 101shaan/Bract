@@ -134,7 +134,7 @@ impl CompletionProvider {
         &self,
         server: &LspServer,
         uri: &str,
-        position: &Position,
+        _position: &Position,
         context: &CompletionContext,
     ) -> Result<Vec<CompletionItem>, String> {
         let mut completions = Vec::new();
