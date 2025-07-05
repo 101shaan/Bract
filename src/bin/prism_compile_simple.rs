@@ -152,7 +152,6 @@ fn compile_prism_file(input_file: &PathBuf, output_dir: &PathBuf) -> Result<(), 
 mod tests {
     use super::*;
     use std::fs;
-    use std::path::Path;
     
     const SIMPLE_PRISM_PROGRAM: &str = r#"
 fn main() -> i32 {

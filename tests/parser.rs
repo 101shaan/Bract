@@ -44,7 +44,7 @@ fn test_parse_complete_program() {
     }
     
     // Check the second function (main)
-    if let Item::Function { name, params, return_type, body, .. } = &module.items[1] {
+            if let Item::Function { name: _, params, return_type, body, .. } = &module.items[1] {
         assert_eq!(params.len(), 0);
         assert!(return_type.is_some());
         assert!(body.is_some());
@@ -115,7 +115,7 @@ fn test_parse_struct_definitions() {
     assert_eq!(module.items.len(), 4);
     
     // Check Point struct (named fields)
-    if let Item::Struct { name, fields: StructFields::Named(fields), .. } = &module.items[0] {
+    if let Item::Struct { name: _, fields: StructFields::Named(fields), .. } = &module.items[0] {
         assert_eq!(fields.len(), 2);
         assert_eq!(fields[0].name.id, 2); // x field
         assert_eq!(fields[1].name.id, 3); // y field

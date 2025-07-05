@@ -188,13 +188,17 @@ fn test_lex_numeric_literals() {
 fn test_lex_performance() {
     use std::time::Instant;
     
-    // Generate a large Prism program
+    // Generate a large Prism program using proper string concatenation
     let mut source = String::new();
     for i in 0..1000 {
-        source.push_str(&format!(
-            "fn function_{}(param_{}: i32) -> i32 {{ return param_{} * 2; }}\n",
-            i, i, i
-        ));
+        source.push_str("fn function");
+        source.push_str(&i.to_string());
+        source.push_str("(param");
+        source.push_str(&i.to_string());
+        source.push_str(": i32) -> i32 { return param");
+        source.push_str(&i.to_string());
+        source.push_str(" * 2; }");
+        source.push('\n');
     }
     
     let start = Instant::now();
@@ -218,22 +222,22 @@ fn test_lex_performance() {
     
     println!("Lexed {} tokens in {:?}", token_count, elapsed);
     let tokens_per_ms = token_count as f64 / elapsed.as_millis() as f64;
-    println!("Performance: {:.2} tokens per millisecond", tokens_per_ms);
+    println!("Performance: {:.2} tokens per ms", tokens_per_ms);
     
     // Verify we got a reasonable number of tokens
     assert!(token_count > 10000); // Should be ~11,000 tokens
     
-    // Performance assertion: should be able to lex >1000 tokens/ms
+    // Performance assertion: should be able to lex >1000 tokens per ms
     // This validates the blazingly fast claim
-    assert!(tokens_per_ms > 1000.0, "Lexer performance too slow: {:.2} tokens per millisecond", tokens_per_ms);
+    assert!(tokens_per_ms > 1000.0, "Lexer performance too slow: {:.2} tokens per ms", tokens_per_ms);
 }
 
 /// Test lexer error handling
 #[test]
 fn test_lex_error_handling() {
     let invalid_sources = vec![
-        ("@", "invalid character"),
-        ("\"unterminated", "unterminated string"),
+        ("@", "invalid char"),
+        (r#""unterminated"#, "unterminated string"),
         ("'unterminated", "unterminated char"), 
         ("/* unterminated", "unterminated comment"),
     ];

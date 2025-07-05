@@ -99,7 +99,7 @@ fn test_canonical_fibonacci() {
     let result = compile_prism_source(source);
     assert!(result.is_ok(), "Fibonacci example should compile successfully");
     
-    let (header, implementation) = result.unwrap();
+    let (_header, implementation) = result.unwrap();
     
     // Verify expected content
     assert!(implementation.contains("fibonacci"));
@@ -139,11 +139,11 @@ fn test_canonical_data_structures() {
     let result = compile_prism_source(source);
     assert!(result.is_ok(), "Data structures example should compile successfully");
     
-    let (header, implementation) = result.unwrap();
+    let (_header, implementation) = result.unwrap();
     
     // Verify struct definitions
-    assert!(header.contains("Point") || implementation.contains("Point"));
-    assert!(header.contains("Rectangle") || implementation.contains("Rectangle"));
+    assert!(_header.contains("Point") || implementation.contains("Point"));
+    assert!(_header.contains("Rectangle") || implementation.contains("Rectangle"));
     assert!(implementation.contains("area"));
     assert!(implementation.contains("main"));
 }
@@ -176,8 +176,8 @@ fn test_canonical_enums() {
     
     // This might not be fully implemented yet
     match result {
-        Ok((header, implementation)) => {
-            assert!(header.contains("Status") || implementation.contains("Status"));
+        Ok((_header, implementation)) => {
+            assert!(_header.contains("Status") || implementation.contains("Status"));
             assert!(implementation.contains("handle_status"));
             assert!(implementation.contains("main"));
         }

@@ -521,8 +521,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    use std::io::Cursor;
+    // use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    // use std::io::Cursor;
 
     #[test]
     fn test_server_creation() {
@@ -544,8 +544,8 @@ mod tests {
             error: None,
         };
 
-        let mut output = Vec::new();
-        let output_arc = Arc::new(Mutex::new(output));
+        let _output = Vec::new();
+        let output_arc = Arc::new(Mutex::new(_output));
         
         assert!(server.handle_message(message, output_arc).await.is_ok());
     }
