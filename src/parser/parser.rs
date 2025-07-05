@@ -236,8 +236,46 @@ impl<'a> Parser<'a> {
             });
         };
         
-        // Generic parameters (TODO: implement later)
-        let generics = Vec::new();
+        // Generic parameters
+        let generics = if self.match_token(&TokenType::Less) {
+            let mut generic_params = Vec::new();
+            
+            if !self.check(&TokenType::Greater) {
+                loop {
+                    let param_start = self.current_position();
+                    
+                    // Parse generic parameter name
+                    if let Some(token) = &self.current_token {
+                        if let TokenType::Identifier(param_name) = &token.token_type {
+                            let name = self.interner.intern(param_name);
+                            self.advance()?;
+                            
+                            // TODO: Parse trait bounds and default values
+                            generic_params.push(crate::ast::GenericParam {
+                                name,
+                                bounds: Vec::new(),
+                                default: None,
+                                span: Span::new(param_start, self.current_position()),
+                            });
+                        } else {
+                            return Err(ParseError::InvalidSyntax {
+                                message: "Expected generic parameter name".to_string(),
+                                position: token.position,
+                            });
+                        }
+                    }
+                    
+                    if !self.match_token(&TokenType::Comma) {
+                        break;
+                    }
+                }
+            }
+            
+            self.expect(TokenType::Greater, "generic parameters")?;
+            generic_params
+        } else {
+            Vec::new()
+        };
         
         // Parameters
         self.expect(TokenType::LeftParen, "function parameters")?;
@@ -296,33 +334,488 @@ impl<'a> Parser<'a> {
         })
     }
     
-    // Placeholder methods for now - will be implemented in separate modules
-    fn parse_struct(&mut self, _visibility: Visibility, _start_pos: Position) -> ParseResult<Item> {
-        todo!("Struct parsing will be implemented")
+    // Implement struct parsing
+    fn parse_struct(&mut self, visibility: Visibility, start_pos: Position) -> ParseResult<Item> {
+        self.expect(TokenType::Struct, "struct declaration")?;
+        
+        // Struct name
+        let name_token = self.expect(TokenType::Identifier("".to_string()), "struct name")?;
+        let name = if let TokenType::Identifier(name_str) = name_token.token_type {
+            self.interner.intern(&name_str)
+        } else {
+            return Err(ParseError::InvalidSyntax {
+                message: "Expected struct name".to_string(),
+                position: name_token.position,
+            });
+        };
+        
+        // Generic parameters
+        let generics = if self.match_token(&TokenType::Less) {
+            let mut generic_params = Vec::new();
+            
+            if !self.check(&TokenType::Greater) {
+                loop {
+                    let param_start = self.current_position();
+                    
+                    // Parse generic parameter name
+                    if let Some(token) = &self.current_token {
+                        if let TokenType::Identifier(param_name) = &token.token_type {
+                            let name = self.interner.intern(param_name);
+                            self.advance()?;
+                            
+                            // TODO: Parse trait bounds and default values
+                            generic_params.push(crate::ast::GenericParam {
+                                name,
+                                bounds: Vec::new(),
+                                default: None,
+                                span: Span::new(param_start, self.current_position()),
+                            });
+                        } else {
+                            return Err(ParseError::InvalidSyntax {
+                                message: "Expected generic parameter name".to_string(),
+                                position: token.position,
+                            });
+                        }
+                    }
+                    
+                    if !self.match_token(&TokenType::Comma) {
+                        break;
+                    }
+                }
+            }
+            
+            self.expect(TokenType::Greater, "generic parameters")?;
+            generic_params
+        } else {
+            Vec::new()
+        };
+        
+        // Parse struct fields
+        let fields = if self.match_token(&TokenType::LeftBrace) {
+            // Named fields: struct Point { x: i32, y: i32 }
+            let mut field_list = Vec::new();
+            
+            while !self.check(&TokenType::RightBrace) && !self.is_at_end() {
+                let field_start = self.current_position();
+                
+                // Field visibility (default private)
+                let field_visibility = if self.match_token(&TokenType::Pub) {
+                    Visibility::Public
+                } else {
+                    Visibility::Private
+                };
+                
+                // Field name
+                let field_name_token = self.expect(TokenType::Identifier("".to_string()), "field name")?;
+                let field_name = if let TokenType::Identifier(name_str) = field_name_token.token_type {
+                    self.interner.intern(&name_str)
+                } else {
+                    return Err(ParseError::InvalidSyntax {
+                        message: "Expected field name".to_string(),
+                        position: field_name_token.position,
+                    });
+                };
+                
+                self.expect(TokenType::Colon, "field type annotation")?;
+                let field_type = self.parse_type()?;
+                
+                field_list.push(crate::ast::StructField {
+                    visibility: field_visibility,
+                    name: field_name,
+                    field_type,
+                    span: Span::new(field_start, self.current_position()),
+                });
+                
+                if !self.match_token(&TokenType::Comma) {
+                    break;
+                }
+            }
+            
+            self.expect(TokenType::RightBrace, "struct fields")?;
+            crate::ast::StructFields::Named(field_list)
+        } else if self.match_token(&TokenType::LeftParen) {
+            // Tuple struct: struct Point(i32, i32);
+            let mut types = Vec::new();
+            
+            while !self.check(&TokenType::RightParen) && !self.is_at_end() {
+                types.push(self.parse_type()?);
+                
+                if !self.match_token(&TokenType::Comma) {
+                    break;
+                }
+            }
+            
+            self.expect(TokenType::RightParen, "tuple struct fields")?;
+            self.expect(TokenType::Semicolon, "tuple struct declaration")?;
+            crate::ast::StructFields::Tuple(types)
+        } else {
+            // Unit struct: struct Unit;
+            self.expect(TokenType::Semicolon, "unit struct declaration")?;
+            crate::ast::StructFields::Unit
+        };
+        
+        let end_pos = self.current_position();
+        Ok(Item::Struct {
+            visibility,
+            name,
+            generics,
+            fields,
+            span: Span::new(start_pos, end_pos),
+        })
     }
     
-    fn parse_enum(&mut self, _visibility: Visibility, _start_pos: Position) -> ParseResult<Item> {
-        todo!("Enum parsing will be implemented")
+    // Implement enum parsing
+    fn parse_enum(&mut self, visibility: Visibility, start_pos: Position) -> ParseResult<Item> {
+        self.expect(TokenType::Enum, "enum declaration")?;
+        
+        // Enum name
+        let name_token = self.expect(TokenType::Identifier("".to_string()), "enum name")?;
+        let name = if let TokenType::Identifier(name_str) = name_token.token_type {
+            self.interner.intern(&name_str)
+        } else {
+            return Err(ParseError::InvalidSyntax {
+                message: "Expected enum name".to_string(),
+                position: name_token.position,
+            });
+        };
+        
+        // Generic parameters
+        let generics = if self.match_token(&TokenType::Less) {
+            let mut generic_params = Vec::new();
+            
+            if !self.check(&TokenType::Greater) {
+                loop {
+                    let param_start = self.current_position();
+                    
+                    // Parse generic parameter name
+                    if let Some(token) = &self.current_token {
+                        if let TokenType::Identifier(param_name) = &token.token_type {
+                            let name = self.interner.intern(param_name);
+                            self.advance()?;
+                            
+                            // TODO: Parse trait bounds and default values
+                            generic_params.push(crate::ast::GenericParam {
+                                name,
+                                bounds: Vec::new(),
+                                default: None,
+                                span: Span::new(param_start, self.current_position()),
+                            });
+                        } else {
+                            return Err(ParseError::InvalidSyntax {
+                                message: "Expected generic parameter name".to_string(),
+                                position: token.position,
+                            });
+                        }
+                    }
+                    
+                    if !self.match_token(&TokenType::Comma) {
+                        break;
+                    }
+                }
+            }
+            
+            self.expect(TokenType::Greater, "generic parameters")?;
+            generic_params
+        } else {
+            Vec::new()
+        };
+        
+        // Parse enum variants
+        self.expect(TokenType::LeftBrace, "enum variants")?;
+        let mut variants = Vec::new();
+        
+        while !self.check(&TokenType::RightBrace) && !self.is_at_end() {
+            let variant_start = self.current_position();
+            
+            // Variant name
+            let variant_name_token = self.expect(TokenType::Identifier("".to_string()), "variant name")?;
+            let variant_name = if let TokenType::Identifier(name_str) = variant_name_token.token_type {
+                self.interner.intern(&name_str)
+            } else {
+                return Err(ParseError::InvalidSyntax {
+                    message: "Expected variant name".to_string(),
+                    position: variant_name_token.position,
+                });
+            };
+            
+            // Parse variant fields
+            let fields = if self.match_token(&TokenType::LeftBrace) {
+                // Named fields: Some { value: T }
+                let mut field_list = Vec::new();
+                
+                while !self.check(&TokenType::RightBrace) && !self.is_at_end() {
+                    let field_start = self.current_position();
+                    
+                    let field_name_token = self.expect(TokenType::Identifier("".to_string()), "field name")?;
+                    let field_name = if let TokenType::Identifier(name_str) = field_name_token.token_type {
+                        self.interner.intern(&name_str)
+                    } else {
+                        return Err(ParseError::InvalidSyntax {
+                            message: "Expected field name".to_string(),
+                            position: field_name_token.position,
+                        });
+                    };
+                    
+                    self.expect(TokenType::Colon, "field type")?;
+                    let field_type = self.parse_type()?;
+                    
+                    field_list.push(crate::ast::StructField {
+                        visibility: Visibility::Public, // Enum fields are always public
+                        name: field_name,
+                        field_type,
+                        span: Span::new(field_start, self.current_position()),
+                    });
+                    
+                    if !self.match_token(&TokenType::Comma) {
+                        break;
+                    }
+                }
+                
+                self.expect(TokenType::RightBrace, "variant fields")?;
+                crate::ast::StructFields::Named(field_list)
+            } else if self.match_token(&TokenType::LeftParen) {
+                // Tuple fields: Some(T)
+                let mut types = Vec::new();
+                
+                while !self.check(&TokenType::RightParen) && !self.is_at_end() {
+                    types.push(self.parse_type()?);
+                    
+                    if !self.match_token(&TokenType::Comma) {
+                        break;
+                    }
+                }
+                
+                self.expect(TokenType::RightParen, "variant fields")?;
+                crate::ast::StructFields::Tuple(types)
+            } else {
+                // Unit variant: None
+                crate::ast::StructFields::Unit
+            };
+            
+            // Optional discriminant value
+            let discriminant = if self.match_token(&TokenType::Equal) {
+                Some(self.parse_expression()?)
+            } else {
+                None
+            };
+            
+            variants.push(crate::ast::EnumVariant {
+                name: variant_name,
+                fields,
+                discriminant,
+                span: Span::new(variant_start, self.current_position()),
+            });
+            
+            if !self.match_token(&TokenType::Comma) {
+                break;
+            }
+        }
+        
+        self.expect(TokenType::RightBrace, "enum variants")?;
+        
+        let end_pos = self.current_position();
+        Ok(Item::Enum {
+            visibility,
+            name,
+            generics,
+            variants,
+            span: Span::new(start_pos, end_pos),
+        })
+    }
+
+    fn parse_type_alias(&mut self, visibility: Visibility, start_pos: Position) -> ParseResult<Item> {
+        self.expect(TokenType::Type, "type alias")?;
+        
+        // Type alias name
+        let name_token = self.expect(TokenType::Identifier("".to_string()), "type name")?;
+        let name = if let TokenType::Identifier(name_str) = name_token.token_type {
+            self.interner.intern(&name_str)
+        } else {
+            return Err(ParseError::InvalidSyntax {
+                message: "Expected type name".to_string(),
+                position: name_token.position,
+            });
+        };
+        
+        // Generic parameters (placeholder for now)
+        let generics = Vec::new();
+        
+        self.expect(TokenType::Equal, "type alias")?;
+        let target_type = self.parse_type()?;
+        self.expect(TokenType::Semicolon, "type alias")?;
+        
+        let end_pos = self.current_position();
+        Ok(Item::TypeAlias {
+            visibility,
+            name,
+            generics,
+            target_type,
+            span: Span::new(start_pos, end_pos),
+        })
     }
     
-    fn parse_type_alias(&mut self, _visibility: Visibility, _start_pos: Position) -> ParseResult<Item> {
-        todo!("Type alias parsing will be implemented")
+    fn parse_const(&mut self, visibility: Visibility, start_pos: Position) -> ParseResult<Item> {
+        self.expect(TokenType::Const, "const declaration")?;
+        
+        // Const name
+        let name_token = self.expect(TokenType::Identifier("".to_string()), "const name")?;
+        let name = if let TokenType::Identifier(name_str) = name_token.token_type {
+            self.interner.intern(&name_str)
+        } else {
+            return Err(ParseError::InvalidSyntax {
+                message: "Expected const name".to_string(),
+                position: name_token.position,
+            });
+        };
+        
+        self.expect(TokenType::Colon, "const type")?;
+        let type_annotation = self.parse_type()?;
+        self.expect(TokenType::Equal, "const value")?;
+        let value = self.parse_expression()?;
+        self.expect(TokenType::Semicolon, "const declaration")?;
+        
+        let end_pos = self.current_position();
+        Ok(Item::Const {
+            visibility,
+            name,
+            type_annotation,
+            value,
+            span: Span::new(start_pos, end_pos),
+        })
     }
     
-    fn parse_const(&mut self, _visibility: Visibility, _start_pos: Position) -> ParseResult<Item> {
-        todo!("Const parsing will be implemented")
+    fn parse_module_decl(&mut self, visibility: Visibility, start_pos: Position) -> ParseResult<Item> {
+        self.expect(TokenType::Mod, "module declaration")?;
+        
+        // Module name
+        let name_token = self.expect(TokenType::Identifier("".to_string()), "module name")?;
+        let name = if let TokenType::Identifier(name_str) = name_token.token_type {
+            self.interner.intern(&name_str)
+        } else {
+            return Err(ParseError::InvalidSyntax {
+                message: "Expected module name".to_string(),
+                position: name_token.position,
+            });
+        };
+        
+        // Parse module body
+        let items = if self.match_token(&TokenType::LeftBrace) {
+            let mut module_items = Vec::new();
+            
+            while !self.check(&TokenType::RightBrace) && !self.is_at_end() {
+                match self.parse_item() {
+                    Ok(item) => module_items.push(item),
+                    Err(err) => {
+                        self.add_error(err);
+                        self.synchronize();
+                    }
+                }
+            }
+            
+            self.expect(TokenType::RightBrace, "module body")?;
+            Some(module_items)
+        } else {
+            // External module: mod foo;
+            self.expect(TokenType::Semicolon, "module declaration")?;
+            None
+        };
+        
+        let end_pos = self.current_position();
+        Ok(Item::Module {
+            visibility,
+            name,
+            items,
+            span: Span::new(start_pos, end_pos),
+        })
     }
     
-    fn parse_module_decl(&mut self, _visibility: Visibility, _start_pos: Position) -> ParseResult<Item> {
-        todo!("Module declaration parsing will be implemented")
+    fn parse_impl_block(&mut self, start_pos: Position) -> ParseResult<Item> {
+        self.expect(TokenType::Impl, "impl block")?;
+        
+        // Generic parameters (placeholder for now)
+        let generics = Vec::new();
+        
+        // Target type
+        let target_type = self.parse_type()?;
+        
+        // Optional trait implementation
+        let trait_ref = if self.match_token(&TokenType::For) {
+            Some(self.parse_type()?)
+        } else {
+            None
+        };
+        
+        self.expect(TokenType::LeftBrace, "impl block")?;
+        let mut items = Vec::new();
+        
+        // Parse impl items (functions, types, consts)
+        while !self.check(&TokenType::RightBrace) && !self.is_at_end() {
+            let item_start = self.current_position();
+            let item_visibility = if self.match_token(&TokenType::Pub) {
+                Visibility::Public
+            } else {
+                Visibility::Private
+            };
+            
+            if self.check(&TokenType::Fn) {
+                // Parse method
+                if let Ok(Item::Function { name, generics, params, return_type, body, is_extern, .. }) = self.parse_function(item_visibility, item_start) {
+                    items.push(crate::ast::ImplItem::Function {
+                        visibility: item_visibility,
+                        name,
+                        generics,
+                        params,
+                        return_type,
+                        body,
+                        span: Span::new(item_start, self.current_position()),
+                    });
+                }
+            } else {
+                // Skip unknown items for now
+                self.synchronize();
+            }
+        }
+        
+        self.expect(TokenType::RightBrace, "impl block")?;
+        
+        let end_pos = self.current_position();
+        Ok(Item::Impl {
+            generics,
+            target_type,
+            trait_ref,
+            items,
+            span: Span::new(start_pos, end_pos),
+        })
     }
     
-    fn parse_impl_block(&mut self, _start_pos: Position) -> ParseResult<Item> {
-        todo!("Impl block parsing will be implemented")
-    }
-    
-    fn parse_use_decl(&mut self, _start_pos: Position) -> ParseResult<Item> {
-        todo!("Use declaration parsing will be implemented")
+    fn parse_use_decl(&mut self, start_pos: Position) -> ParseResult<Item> {
+        self.expect(TokenType::Use, "use declaration")?;
+        
+        // Parse use path
+        let mut path = Vec::new();
+        
+        loop {
+            let name_token = self.expect(TokenType::Identifier("".to_string()), "use path")?;
+            if let TokenType::Identifier(name_str) = name_token.token_type {
+                path.push(self.interner.intern(&name_str));
+            }
+            
+            if !self.match_token(&TokenType::DoubleColon) {
+                break;
+            }
+        }
+        
+        // TODO: Add alias support when 'as' keyword is implemented
+        let alias = None;
+        
+        self.expect(TokenType::Semicolon, "use declaration")?;
+        
+        let end_pos = self.current_position();
+        Ok(Item::Use {
+            path,
+            alias,
+            span: Span::new(start_pos, end_pos),
+        })
     }
     
     /// Parse a block expression: { [statements...] [expr] }
