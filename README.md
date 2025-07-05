@@ -3,7 +3,7 @@
 
 > A blazingly fast, memory-safe systems programming language that compiles to native machine code
 
-**Status:** 🚧 Early Development
+**Status:** Later Development
 
 ## What is Prism?
 
@@ -39,11 +39,11 @@ fn main() {
 - [x] Project setup
 - [x] Lexer/Tokenizer
 - [x] Parser & AST
-- [ ] Type system foundations
-- [ ] Basic interpreter
+- [x] Type system foundations
+- [x] Basic interpreter
 
 ### Phase 2: Compilation
-- [ ] Code generation (C transpilation)
+- [x] Code generation (C transpilation)
 - [ ] Native machine code compilation
 - [ ] Optimization passes
 - [ ] Error diagnostics

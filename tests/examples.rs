@@ -230,7 +230,7 @@ fn test_canonical_control_flow() {
     let result = compile_prism_source(source);
     assert!(result.is_ok(), "Control flow example should compile successfully");
     
-    let (header, implementation) = result.unwrap();
+    let (_header, implementation) = result.unwrap();
     
     // Verify functions are present
     assert!(implementation.contains("factorial_iterative"));
@@ -266,7 +266,7 @@ fn test_canonical_arrays() {
     
     // Arrays might not be fully implemented yet
     match result {
-        Ok((header, implementation)) => {
+        Ok((_header, implementation)) => {
             assert!(implementation.contains("sum_array"));
             assert!(implementation.contains("main"));
         }

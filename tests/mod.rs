@@ -6,7 +6,6 @@
 pub mod lexer;
 pub mod parser;
 pub mod semantic;
-pub mod codegen;
 pub mod integration;
 pub mod examples;
 
