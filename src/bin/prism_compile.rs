@@ -388,9 +388,9 @@ mod tests {
     #[test]
     fn test_example_prism_code() {
         // Test that our example code is valid
-        assert!(!EXAMPLE_PRISM_CODE.is_empty());
-        assert!(EXAMPLE_PRISM_CODE.contains("fn main()"));
-        assert!(EXAMPLE_PRISM_CODE.contains("return"));
+        assert!(!_EXAMPLE_PRISM_CODE.is_empty());
+        assert!(_EXAMPLE_PRISM_CODE.contains("fn main()"));
+        assert!(_EXAMPLE_PRISM_CODE.contains("return"));
     }
     
     #[test]
@@ -400,7 +400,7 @@ mod tests {
         
         // Write test file
         let mut file = File::create(&test_file).unwrap();
-        writeln!(file, "{}", EXAMPLE_PRISM_CODE).unwrap();
+        writeln!(file, "{}", _EXAMPLE_PRISM_CODE).unwrap();
         
         // Read it back
         let content = fs::read_to_string(&test_file).unwrap();
