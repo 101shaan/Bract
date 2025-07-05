@@ -315,12 +315,34 @@ impl PrismLspServer {
                     let character = position["character"].as_u64().unwrap_or(0) as u32;
                     let pos = Position { line, character };
 
-                    // Get completions (simplified for now)
+                    // Get document for completion context
+                    let document = self.core.get_document(uri)
+                        .unwrap_or(None)
+                        .ok_or("Document not found")?;
+                    
+                    // Create completion context
+                    let context = prism::lsp::completion::create_completion_context(
+                        uri.to_string(),
+                        pos.clone(),
+                        &document,
+                    ).unwrap_or_else(|_| prism::lsp::completion::CompletionContext {
+                        uri: uri.to_string(),
+                        position: pos.clone(),
+                        line_content: String::new(),
+                        char_before: None,
+                        word_at_cursor: String::new(),
+                        in_function_call: false,
+                        in_struct_init: false,
+                        in_pattern_match: false,
+                        scope_depth: 0,
+                    });
+
+                    // Get completions
                     let completions = self.completion_provider.provide_completions(
                         &self.core,
                         uri,
                         &pos,
-                        "", // TODO: Extract word at cursor
+                        &context,
                     ).unwrap_or_default();
 
                     let response = json!({
