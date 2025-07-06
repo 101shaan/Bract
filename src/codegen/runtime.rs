@@ -319,6 +319,20 @@ impl RuntimeGenerator {
         self.builder.line("void* prism_result_unwrap(const prism_result_t* result);");
         self.builder.newline();
         
+        // Math functions
+        self.builder.line("int64_t prism_abs_int(int64_t value);");
+        self.builder.line("double prism_abs_float(double value);");
+        self.builder.line("int64_t prism_min_int(int64_t a, int64_t b);");
+        self.builder.line("int64_t prism_max_int(int64_t a, int64_t b);");
+        self.builder.line("double prism_min_float(double a, double b);");
+        self.builder.line("double prism_max_float(double a, double b);");
+        self.builder.line("double prism_pow(double base, double exponent);");
+        self.builder.line("double prism_sqrt(double value);");
+        self.builder.line("double prism_sin(double radians);");
+        self.builder.line("double prism_cos(double radians);");
+        self.builder.line("double prism_tan(double radians);");
+        self.builder.newline();
+        
         Ok(())
     }
     
@@ -333,6 +347,7 @@ impl RuntimeGenerator {
         self.builder.line("#include <stdlib.h>");
         self.builder.line("#include <string.h>");
         self.builder.line("#include <assert.h>");
+        self.builder.line("#include <math.h>");
         self.builder.newline();
         
         // Static variables
@@ -405,6 +420,36 @@ impl RuntimeGenerator {
             b.line("return ptr;");
         });
         
+        // Reference counting (stub implementations)
+        self.builder.function("void prism_ref_inc(void* ptr)", |b| {
+            b.line("// TODO: Implement reference counting");
+            b.line("(void)ptr;");
+        });
+        
+        self.builder.function("void prism_ref_dec(void* ptr)", |b| {
+            b.line("// TODO: Implement reference counting");
+            b.line("(void)ptr;");
+        });
+        
+        self.builder.function("uint32_t prism_ref_count(void* ptr)", |b| {
+            b.line("// TODO: Implement reference counting");
+            b.line("(void)ptr;");
+            b.line("return 1;");
+        });
+        
+        // Memory debugging
+        self.builder.line("#ifdef PRISM_DEBUG");
+        self.builder.function("void prism_memory_report(void)", |b| {
+            b.line("// TODO: Implement memory usage reporting");
+            b.line("printf(\"Memory usage reporting not implemented yet\\n\");");
+        });
+        
+        self.builder.function("size_t prism_memory_usage(void)", |b| {
+            b.line("// TODO: Implement memory usage tracking");
+            b.line("return 0;");
+        });
+        self.builder.line("#endif");
+        
         Ok(())
     }
     
@@ -428,11 +473,166 @@ impl RuntimeGenerator {
             b.line("return str;");
         });
         
+        self.builder.function("prism_str_t prism_str_from_bytes(const char* bytes, size_t length)", |b| {
+            b.line("prism_str_t str = {0};");
+            b.line("if (bytes && length > 0) {");
+            b.indent_inc();
+            b.line("str.length = length;");
+            b.line("str.capacity = length + 1;");
+            b.line("str.data = prism_alloc(str.capacity);");
+            b.line("memcpy(str.data, bytes, length);");
+            b.line("str.data[length] = '\\0';");
+            b.line("str.ref_count = 1;");
+            b.indent_dec();
+            b.line("}");
+            b.line("return str;");
+        });
+        
+        self.builder.function("prism_str_t prism_str_with_capacity(size_t capacity)", |b| {
+            b.line("prism_str_t str = {0};");
+            b.line("if (capacity > 0) {");
+            b.indent_inc();
+            b.line("str.capacity = capacity;");
+            b.line("str.data = prism_alloc(capacity);");
+            b.line("str.data[0] = '\\0';");
+            b.line("str.ref_count = 1;");
+            b.indent_dec();
+            b.line("}");
+            b.line("return str;");
+        });
+        
+        self.builder.function("prism_str_t prism_str_clone(const prism_str_t* str)", |b| {
+            b.line("prism_str_t clone = {0};");
+            b.line("if (str && str->data) {");
+            b.indent_inc();
+            b.line("clone.length = str->length;");
+            b.line("clone.capacity = str->capacity;");
+            b.line("clone.data = prism_alloc(clone.capacity);");
+            b.line("memcpy(clone.data, str->data, str->length + 1);");
+            b.line("clone.ref_count = 1;");
+            b.indent_dec();
+            b.line("}");
+            b.line("return clone;");
+        });
+        
+        // String operations
+        self.builder.function("void prism_str_push(prism_str_t* str, char ch)", |b| {
+            b.line("if (!str) return;");
+            b.line("if (str->length + 1 >= str->capacity) {");
+            b.indent_inc();
+            b.line("size_t new_capacity = str->capacity > 0 ? str->capacity * 2 : 8;");
+            b.line("str->data = prism_realloc(str->data, new_capacity);");
+            b.line("str->capacity = new_capacity;");
+            b.indent_dec();
+            b.line("}");
+            b.line("str->data[str->length] = ch;");
+            b.line("str->length++;");
+            b.line("str->data[str->length] = '\\0';");
+        });
+        
+        self.builder.function("void prism_str_push_str(prism_str_t* str, const prism_str_t* other)", |b| {
+            b.line("if (!str || !other || !other->data) return;");
+            b.line("size_t new_length = str->length + other->length;");
+            b.line("if (new_length + 1 > str->capacity) {");
+            b.indent_inc();
+            b.line("size_t new_capacity = str->capacity;");
+            b.line("while (new_capacity <= new_length) {");
+            b.indent_inc();
+            b.line("new_capacity = new_capacity > 0 ? new_capacity * 2 : 8;");
+            b.indent_dec();
+            b.line("}");
+            b.line("str->data = prism_realloc(str->data, new_capacity);");
+            b.line("str->capacity = new_capacity;");
+            b.indent_dec();
+            b.line("}");
+            b.line("memcpy(str->data + str->length, other->data, other->length);");
+            b.line("str->length = new_length;");
+            b.line("str->data[str->length] = '\\0';");
+        });
+        
+        self.builder.function("void prism_str_push_cstr(prism_str_t* str, const char* cstr)", |b| {
+            b.line("if (!str || !cstr) return;");
+            b.line("size_t cstr_len = strlen(cstr);");
+            b.line("size_t new_length = str->length + cstr_len;");
+            b.line("if (new_length + 1 > str->capacity) {");
+            b.indent_inc();
+            b.line("size_t new_capacity = str->capacity;");
+            b.line("while (new_capacity <= new_length) {");
+            b.indent_inc();
+            b.line("new_capacity = new_capacity > 0 ? new_capacity * 2 : 8;");
+            b.indent_dec();
+            b.line("}");
+            b.line("str->data = prism_realloc(str->data, new_capacity);");
+            b.line("str->capacity = new_capacity;");
+            b.indent_dec();
+            b.line("}");
+            b.line("memcpy(str->data + str->length, cstr, cstr_len);");
+            b.line("str->length = new_length;");
+            b.line("str->data[str->length] = '\\0';");
+        });
+        
+        self.builder.function("prism_str_t prism_str_concat(const prism_str_t* a, const prism_str_t* b)", |b| {
+            b.line("prism_str_t result = {0};");
+            b.line("if (!a && !b) return result;");
+            b.line("if (!a) return prism_str_clone(b);");
+            b.line("if (!b) return prism_str_clone(a);");
+            b.line("");
+            b.line("result.length = a->length + b->length;");
+            b.line("result.capacity = result.length + 1;");
+            b.line("result.data = prism_alloc(result.capacity);");
+            b.line("result.ref_count = 1;");
+            b.line("");
+            b.line("memcpy(result.data, a->data, a->length);");
+            b.line("memcpy(result.data + a->length, b->data, b->length);");
+            b.line("result.data[result.length] = '\\0';");
+            b.line("");
+            b.line("return result;");
+        });
+        
         // String comparison
         self.builder.function("bool prism_str_eq(const prism_str_t* a, const prism_str_t* b)", |b| {
             b.line("if (!a || !b) return false;");
             b.line("if (a->length != b->length) return false;");
             b.line("return memcmp(a->data, b->data, a->length) == 0;");
+        });
+        
+        self.builder.function("bool prism_str_eq_cstr(const prism_str_t* str, const char* cstr)", |b| {
+            b.line("if (!str || !cstr) return false;");
+            b.line("size_t cstr_len = strlen(cstr);");
+            b.line("if (str->length != cstr_len) return false;");
+            b.line("return memcmp(str->data, cstr, str->length) == 0;");
+        });
+        
+        self.builder.function("int prism_str_cmp(const prism_str_t* a, const prism_str_t* b)", |b| {
+            b.line("if (!a || !b) return 0;");
+            b.line("size_t min_len = a->length < b->length ? a->length : b->length;");
+            b.line("int result = memcmp(a->data, b->data, min_len);");
+            b.line("if (result != 0) return result;");
+            b.line("if (a->length < b->length) return -1;");
+            b.line("if (a->length > b->length) return 1;");
+            b.line("return 0;");
+        });
+        
+        // String utilities
+        self.builder.function("size_t prism_str_len(const prism_str_t* str)", |b| {
+            b.line("return str ? str->length : 0;");
+        });
+        
+        self.builder.function("bool prism_str_is_empty(const prism_str_t* str)", |b| {
+            b.line("return !str || str->length == 0;");
+        });
+        
+        self.builder.function("const char* prism_str_as_cstr(const prism_str_t* str)", |b| {
+            b.line("return str && str->data ? str->data : \"\";");
+        });
+        
+        self.builder.function("void prism_str_clear(prism_str_t* str)", |b| {
+            b.line("if (str && str->data) {");
+            b.indent_inc();
+            b.line("str->length = 0;");
+            b.line("str->data[0] = '\\0';");
+            b.indent_dec();
+            b.line("}");
         });
         
         // String cleanup
@@ -465,6 +665,86 @@ impl RuntimeGenerator {
             b.line("return arr;");
         });
         
+        self.builder.function("prism_array_t prism_array_with_capacity(size_t element_size, size_t capacity)", |b| {
+            b.line("prism_array_t arr = {0};");
+            b.line("arr.element_size = element_size;");
+            b.line("arr.capacity = capacity > 0 ? capacity : 4;");
+            b.line("arr.data = prism_alloc(arr.capacity * element_size);");
+            b.line("arr.ref_count = 1;");
+            b.line("return arr;");
+        });
+        
+        self.builder.function("prism_array_t prism_array_clone(const prism_array_t* arr)", |b| {
+            b.line("prism_array_t clone = {0};");
+            b.line("if (arr && arr->data) {");
+            b.indent_inc();
+            b.line("clone.element_size = arr->element_size;");
+            b.line("clone.capacity = arr->capacity;");
+            b.line("clone.length = arr->length;");
+            b.line("clone.data = prism_alloc(clone.capacity * clone.element_size);");
+            b.line("memcpy(clone.data, arr->data, arr->length * arr->element_size);");
+            b.line("clone.ref_count = 1;");
+            b.indent_dec();
+            b.line("}");
+            b.line("return clone;");
+        });
+        
+        // Array operations
+        self.builder.function("void prism_array_push(prism_array_t* arr, const void* element)", |b| {
+            b.line("if (!arr || !element) return;");
+            b.line("if (arr->length >= arr->capacity) {");
+            b.indent_inc();
+            b.line("size_t new_capacity = arr->capacity * 2;");
+            b.line("arr->data = prism_realloc(arr->data, new_capacity * arr->element_size);");
+            b.line("arr->capacity = new_capacity;");
+            b.indent_dec();
+            b.line("}");
+            b.line("char* dest = (char*)arr->data + (arr->length * arr->element_size);");
+            b.line("memcpy(dest, element, arr->element_size);");
+            b.line("arr->length++;");
+        });
+        
+        self.builder.function("bool prism_array_pop(prism_array_t* arr, void* element)", |b| {
+            b.line("if (!arr || arr->length == 0) return false;");
+            b.line("arr->length--;");
+            b.line("if (element) {");
+            b.indent_inc();
+            b.line("char* src = (char*)arr->data + (arr->length * arr->element_size);");
+            b.line("memcpy(element, src, arr->element_size);");
+            b.indent_dec();
+            b.line("}");
+            b.line("return true;");
+        });
+        
+        self.builder.function("void* prism_array_get(const prism_array_t* arr, size_t index)", |b| {
+            b.line("if (!arr || index >= arr->length) return NULL;");
+            b.line("return (char*)arr->data + (index * arr->element_size);");
+        });
+        
+        self.builder.function("bool prism_array_set(prism_array_t* arr, size_t index, const void* element)", |b| {
+            b.line("if (!arr || !element || index >= arr->length) return false;");
+            b.line("char* dest = (char*)arr->data + (index * arr->element_size);");
+            b.line("memcpy(dest, element, arr->element_size);");
+            b.line("return true;");
+        });
+        
+        // Array utilities
+        self.builder.function("size_t prism_array_len(const prism_array_t* arr)", |b| {
+            b.line("return arr ? arr->length : 0;");
+        });
+        
+        self.builder.function("bool prism_array_is_empty(const prism_array_t* arr)", |b| {
+            b.line("return !arr || arr->length == 0;");
+        });
+        
+        self.builder.function("void prism_array_clear(prism_array_t* arr)", |b| {
+            b.line("if (arr) {");
+            b.indent_inc();
+            b.line("arr->length = 0;");
+            b.indent_dec();
+            b.line("}");
+        });
+        
         // Array cleanup
         self.builder.function("void prism_array_free(prism_array_t* arr)", |b| {
             b.line("if (arr && arr->data) {");
@@ -491,6 +771,25 @@ impl RuntimeGenerator {
             b.line("abort();");
         });
         
+        // Panic function with formatting
+        self.builder.function("void prism_panic_fmt(const char* format, ...)", |b| {
+            b.line("va_list args;");
+            b.line("fprintf(stderr, \"Prism panic: \");");
+            b.line("va_start(args, format);");
+            b.line("vfprintf(stderr, format, args);");
+            b.line("va_end(args);");
+            b.line("fprintf(stderr, \"\\n\");");
+            b.line("abort();");
+        });
+        
+        self.builder.function("void prism_assert(bool condition, const char* message)", |b| {
+            b.line("if (!condition) {");
+            b.indent_inc();
+            b.line("prism_panic(message ? message : \"Assertion failed\");");
+            b.indent_dec();
+            b.line("}");
+        });
+        
         // Error state management
         self.builder.function("void prism_set_error(prism_error_code_t code, const char* message)", |b| {
             b.line("g_error_code = code;");
@@ -512,6 +811,11 @@ impl RuntimeGenerator {
         
         self.builder.function("const char* prism_get_error_message(void)", |b| {
             b.line("return g_error_message;");
+        });
+        
+        self.builder.function("void prism_clear_error(void)", |b| {
+            b.line("g_error_code = PRISM_ERROR_NONE;");
+            b.line("g_error_message[0] = '\\0';");
         });
         
         Ok(())
@@ -542,8 +846,58 @@ impl RuntimeGenerator {
             b.line("printf(\"%lld\", (long long)value);");
         });
         
+        self.builder.function("void prism_print_uint(uint64_t value)", |b| {
+            b.line("printf(\"%llu\", (unsigned long long)value);");
+        });
+        
+        self.builder.function("void prism_print_float(double value)", |b| {
+            b.line("printf(\"%g\", value);");
+        });
+        
+        self.builder.function("void prism_print_bool(bool value)", |b| {
+            b.line("printf(\"%s\", value ? \"true\" : \"false\");");
+        });
+        
         self.builder.function("void prism_println(void)", |b| {
             b.line("printf(\"\\n\");");
+            b.line("fflush(stdout);");
+        });
+        
+        // Input functions
+        self.builder.function("prism_str_t prism_read_line(void)", |b| {
+            b.line("prism_str_t result = prism_str_with_capacity(256);");
+            b.line("char buffer[256];");
+            b.line("if (fgets(buffer, sizeof(buffer), stdin)) {");
+            b.indent_inc();
+            b.line("// Remove newline if present");
+            b.line("size_t len = strlen(buffer);");
+            b.line("if (len > 0 && buffer[len-1] == '\\n') {");
+            b.indent_inc();
+            b.line("buffer[len-1] = '\\0';");
+            b.line("len--;");
+            b.indent_dec();
+            b.line("}");
+            b.line("prism_str_push_cstr(&result, buffer);");
+            b.indent_dec();
+            b.line("}");
+            b.line("return result;");
+        });
+        
+        self.builder.function("bool prism_read_int(int64_t* value)", |b| {
+            b.line("if (!value) return false;");
+            b.line("long long temp;");
+            b.line("if (scanf(\"%lld\", &temp) == 1) {");
+            b.indent_inc();
+            b.line("*value = (int64_t)temp;");
+            b.line("return true;");
+            b.indent_dec();
+            b.line("}");
+            b.line("return false;");
+        });
+        
+        self.builder.function("bool prism_read_float(double* value)", |b| {
+            b.line("if (!value) return false;");
+            b.line("return scanf(\"%lf\", value) == 1;");
         });
         
         Ok(())
@@ -559,6 +913,26 @@ impl RuntimeGenerator {
             b.line("return range;");
         });
         
+        self.builder.function("bool prism_range_contains(const prism_range_t* range, int64_t value)", |b| {
+            b.line("if (!range) return false;");
+            b.line("if (range->inclusive) {");
+            b.indent_inc();
+            b.line("return value >= range->start && value <= range->end;");
+            b.indent_dec();
+            b.line("} else {");
+            b.indent_inc();
+            b.line("return value >= range->start && value < range->end;");
+            b.indent_dec();
+            b.line("}");
+        });
+        
+        self.builder.function("int64_t prism_range_len(const prism_range_t* range)", |b| {
+            b.line("if (!range) return 0;");
+            b.line("int64_t len = range->end - range->start;");
+            b.line("if (range->inclusive) len++;");
+            b.line("return len > 0 ? len : 0;");
+        });
+        
         // Optional functions
         self.builder.function("prism_optional_t prism_some(void* value)", |b| {
             b.line("prism_optional_t opt = { value, true };");
@@ -570,6 +944,23 @@ impl RuntimeGenerator {
             b.line("return opt;");
         });
         
+        self.builder.function("bool prism_optional_is_some(const prism_optional_t* opt)", |b| {
+            b.line("return opt && opt->has_value;");
+        });
+        
+        self.builder.function("bool prism_optional_is_none(const prism_optional_t* opt)", |b| {
+            b.line("return !opt || !opt->has_value;");
+        });
+        
+        self.builder.function("void* prism_optional_unwrap(const prism_optional_t* opt)", |b| {
+            b.line("if (!opt || !opt->has_value) {");
+            b.indent_inc();
+            b.line("prism_panic(\"Attempted to unwrap None value\");");
+            b.indent_dec();
+            b.line("}");
+            b.line("return opt->data;");
+        });
+        
         // Result functions
         self.builder.function("prism_result_t prism_ok(void* value)", |b| {
             b.line("prism_result_t result = { value, NULL, true };");
@@ -579,6 +970,74 @@ impl RuntimeGenerator {
         self.builder.function("prism_result_t prism_err(void* error)", |b| {
             b.line("prism_result_t result = { NULL, error, false };");
             b.line("return result;");
+        });
+        
+        self.builder.function("bool prism_result_is_ok(const prism_result_t* result)", |b| {
+            b.line("return result && result->is_ok;");
+        });
+        
+        self.builder.function("bool prism_result_is_err(const prism_result_t* result)", |b| {
+            b.line("return result && !result->is_ok;");
+        });
+        
+        self.builder.function("void* prism_result_unwrap(const prism_result_t* result)", |b| {
+            b.line("if (!result || !result->is_ok) {");
+            b.indent_inc();
+            b.line("prism_panic(\"Attempted to unwrap error result\");");
+            b.indent_dec();
+            b.line("}");
+            b.line("return result->data;");
+        });
+        
+        // Math functions
+        self.builder.function("int64_t prism_abs_int(int64_t value)", |b| {
+            b.line("return value < 0 ? -value : value;");
+        });
+        
+        self.builder.function("double prism_abs_float(double value)", |b| {
+            b.line("return fabs(value);");
+        });
+        
+        self.builder.function("int64_t prism_min_int(int64_t a, int64_t b)", |b| {
+            b.line("return a < b ? a : b;");
+        });
+        
+        self.builder.function("int64_t prism_max_int(int64_t a, int64_t b)", |b| {
+            b.line("return a > b ? a : b;");
+        });
+        
+        self.builder.function("double prism_min_float(double a, double b)", |b| {
+            b.line("return fmin(a, b);");
+        });
+        
+        self.builder.function("double prism_max_float(double a, double b)", |b| {
+            b.line("return fmax(a, b);");
+        });
+        
+        self.builder.function("double prism_pow(double base, double exponent)", |b| {
+            b.line("return pow(base, exponent);");
+        });
+        
+        self.builder.function("double prism_sqrt(double value)", |b| {
+            b.line("if (value < 0) {");
+            b.indent_inc();
+            b.line("prism_set_error(PRISM_ERROR_INVALID_ARGUMENT, \"Cannot take square root of negative number\");");
+            b.line("return 0.0;");
+            b.indent_dec();
+            b.line("}");
+            b.line("return sqrt(value);");
+        });
+        
+        self.builder.function("double prism_sin(double radians)", |b| {
+            b.line("return sin(radians);");
+        });
+        
+        self.builder.function("double prism_cos(double radians)", |b| {
+            b.line("return cos(radians);");
+        });
+        
+        self.builder.function("double prism_tan(double radians)", |b| {
+            b.line("return tan(radians);");
         });
         
         Ok(())
