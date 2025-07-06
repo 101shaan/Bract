@@ -1112,4 +1112,108 @@ mod tests {
         assert!(header.contains("void prism_free(void* ptr);"));
         assert!(header.contains("void* prism_realloc(void* ptr, size_t new_size);"));
     }
+    
+    #[test]
+    fn test_comprehensive_stdlib_functions() {
+        let mut generator = RuntimeGenerator::new();
+        let (header, implementation) = generator.generate_runtime().unwrap();
+        
+        // Test string functions
+        assert!(header.contains("prism_str_new"));
+        assert!(header.contains("prism_str_push"));
+        assert!(header.contains("prism_str_concat"));
+        assert!(header.contains("prism_str_eq"));
+        assert!(header.contains("prism_str_len"));
+        assert!(implementation.contains("prism_str_new"));
+        assert!(implementation.contains("prism_str_push"));
+        assert!(implementation.contains("prism_str_concat"));
+        
+        // Test array functions
+        assert!(header.contains("prism_array_new"));
+        assert!(header.contains("prism_array_push"));
+        assert!(header.contains("prism_array_get"));
+        assert!(header.contains("prism_array_pop"));
+        assert!(implementation.contains("prism_array_new"));
+        assert!(implementation.contains("prism_array_push"));
+        assert!(implementation.contains("prism_array_get"));
+        
+        // Test I/O functions
+        assert!(header.contains("prism_print_str"));
+        assert!(header.contains("prism_print_int"));
+        assert!(header.contains("prism_print_float"));
+        assert!(header.contains("prism_read_line"));
+        assert!(implementation.contains("prism_print_str"));
+        assert!(implementation.contains("prism_print_int"));
+        assert!(implementation.contains("prism_read_line"));
+        
+        // Test math functions
+        assert!(header.contains("prism_abs_int"));
+        assert!(header.contains("prism_min_int"));
+        assert!(header.contains("prism_max_int"));
+        assert!(header.contains("prism_pow"));
+        assert!(header.contains("prism_sqrt"));
+        assert!(header.contains("prism_sin"));
+        assert!(implementation.contains("prism_abs_int"));
+        assert!(implementation.contains("prism_min_int"));
+        assert!(implementation.contains("prism_pow"));
+        assert!(implementation.contains("prism_sqrt"));
+        
+        // Test error handling
+        assert!(header.contains("prism_panic"));
+        assert!(header.contains("prism_panic_fmt"));
+        assert!(header.contains("prism_assert"));
+        assert!(header.contains("prism_set_error"));
+        assert!(implementation.contains("prism_panic"));
+        assert!(implementation.contains("prism_panic_fmt"));
+        assert!(implementation.contains("prism_assert"));
+        
+        // Test utility types
+        assert!(header.contains("prism_optional_t"));
+        assert!(header.contains("prism_result_t"));
+        assert!(header.contains("prism_range_t"));
+        assert!(implementation.contains("prism_optional_is_some"));
+        assert!(implementation.contains("prism_result_is_ok"));
+        assert!(implementation.contains("prism_range_contains"));
+    }
+    
+    #[test]
+    fn test_standard_library_completeness() {
+        let mut generator = RuntimeGenerator::new();
+        let (header, implementation) = generator.generate_runtime().unwrap();
+        
+        // Verify comprehensive coverage of essential stdlib functions
+        let essential_functions = vec![
+            // String operations
+            "prism_str_new", "prism_str_from_bytes", "prism_str_clone",
+            "prism_str_push", "prism_str_push_str", "prism_str_concat",
+            "prism_str_eq", "prism_str_cmp", "prism_str_len", "prism_str_clear",
+            
+            // Array operations  
+            "prism_array_new", "prism_array_with_capacity", "prism_array_clone",
+            "prism_array_push", "prism_array_pop", "prism_array_get", "prism_array_set",
+            "prism_array_len", "prism_array_clear",
+            
+            // I/O operations
+            "prism_print_str", "prism_print_int", "prism_print_float", "prism_print_bool",
+            "prism_read_line", "prism_read_int", "prism_read_float",
+            
+            // Math functions
+            "prism_abs_int", "prism_abs_float", "prism_min_int", "prism_max_int",
+            "prism_pow", "prism_sqrt", "prism_sin", "prism_cos", "prism_tan",
+            
+            // Error handling
+            "prism_panic", "prism_panic_fmt", "prism_assert",
+            "prism_set_error", "prism_get_error", "prism_clear_error",
+            
+            // Utility functions
+            "prism_optional_is_some", "prism_optional_unwrap",
+            "prism_result_is_ok", "prism_result_unwrap",
+            "prism_range_contains", "prism_range_len"
+        ];
+        
+        for func in essential_functions {
+            assert!(header.contains(func), "Missing header declaration for {}", func);
+            assert!(implementation.contains(func), "Missing implementation for {}", func);
+        }
+    }
 } 
