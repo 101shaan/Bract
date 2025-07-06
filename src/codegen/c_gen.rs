@@ -117,6 +117,9 @@ impl CCodeGenerator {
                 // Nested modules are handled recursively
                 self.generate_nested_module(item)?;
             },
+            Item::Impl { .. } => {
+                self.generate_impl(item)?;
+            },
             _ => {
                 return Err(CodegenError::UnsupportedFeature(
                     format!("Item type not yet supported: {:?}", item)
@@ -393,6 +396,162 @@ impl CCodeGenerator {
         Ok(())
     }
     
+    /// Generate an impl block
+    fn generate_impl(&mut self, item: &Item) -> CodegenResult<()> {
+        if let Item::Impl { target_type, items, .. } = item {
+            // Get the struct name for method name prefixing
+            let struct_name = match target_type {
+                Type::Path { segments, .. } => {
+                    segments.iter()
+                        .map(|s| self.format_identifier(s))
+                        .collect::<Vec<_>>()
+                        .join("_")
+                },
+                _ => {
+                    return Err(CodegenError::UnsupportedFeature(
+                        "Impl blocks only supported for named types".to_string()
+                    ));
+                }
+            };
+            
+            // Generate forward declarations for all methods
+            self.builder.header_context();
+            self.builder.comment(&format!("Methods for {}", struct_name));
+            
+            // Generate each impl item
+            for impl_item in items {
+                match impl_item {
+                    ImplItem::Function { name, params, return_type, body, .. } => {
+                        self.generate_impl_method(&struct_name, name, params, return_type, body)?;
+                    },
+                    ImplItem::Const { name, type_annotation, value, .. } => {
+                        self.generate_impl_const(&struct_name, name, type_annotation, value)?;
+                    },
+                    ImplItem::Type { .. } => {
+                        // Associated types are not directly supported in C
+                        return Err(CodegenError::UnsupportedFeature(
+                            "Associated types not supported in C generation".to_string()
+                        ));
+                    }
+                }
+            }
+            
+            self.builder.newline();
+            self.builder.code_context();
+            self.metrics.record_lines(items.len() * 5); // Estimate
+        }
+        
+        Ok(())
+    }
+    
+    /// Generate an impl method
+    fn generate_impl_method(
+        &mut self,
+        struct_name: &str,
+        method_name: &InternedString,
+        params: &[Parameter],
+        return_type: &Option<Type>,
+        body: &Option<Expr>
+    ) -> CodegenResult<()> {
+        let method_name_str = self.format_identifier(method_name);
+        let full_method_name = format!("{}_{}", struct_name, method_name_str);
+        
+        // Generate method signature
+        let mut signature = String::new();
+        
+        // Return type
+        let ret_type = if let Some(ret_type) = return_type {
+            self.generate_type_name(ret_type)?
+        } else {
+            "void".to_string()
+        };
+        signature.push_str(&ret_type);
+        signature.push(' ');
+        signature.push_str(&full_method_name);
+        signature.push('(');
+        
+        // Parameters (first parameter is always the struct instance)
+        if params.is_empty() {
+            signature.push_str("void");
+        } else {
+            for (i, param) in params.iter().enumerate() {
+                if i > 0 {
+                    signature.push_str(", ");
+                }
+                
+                let param_type = if let Some(type_ann) = &param.type_annotation {
+                    self.generate_type_name(type_ann)?
+                } else {
+                    return Err(CodegenError::TypeConversion(
+                        "Method parameter must have explicit type".to_string()
+                    ));
+                };
+                
+                let param_name = self.generate_parameter_name(&param.pattern)?;
+                signature.push_str(&format!("{} {}", param_type, param_name));
+            }
+        }
+        signature.push(')');
+        
+        // Generate method body
+        if let Some(body_expr) = body {
+            // Generate method signature and opening
+            self.builder.line(&format!("{} {{", signature));
+            self.builder.indent_inc();
+            
+            // Generate method body
+            self.context.current_function = Some(full_method_name.clone());
+            self.context.enter_scope();
+            
+            if let Err(e) = Self::generate_function_body_impl(body_expr, &mut self.context, &mut self.builder) {
+                eprintln!("Error generating method body: {}", e);
+                return Err(e);
+            }
+            
+            self.context.exit_scope();
+            self.context.current_function = None;
+            
+            // Close method
+            self.builder.indent_dec();
+            self.builder.line("}");
+            self.builder.newline();
+        } else {
+            // Method declaration only
+            self.builder.header_context();
+            self.builder.line(&format!("{};", signature));
+            self.builder.code_context();
+        }
+        
+        Ok(())
+    }
+    
+    /// Generate an impl constant
+    fn generate_impl_const(
+        &mut self,
+        struct_name: &str,
+        const_name: &InternedString,
+        type_annotation: &Type,
+        value: &Option<Expr>
+    ) -> CodegenResult<()> {
+        let const_name_str = self.format_identifier(const_name);
+        let full_const_name = format!("{}_{}", struct_name, const_name_str);
+        let type_name = self.generate_type_name(type_annotation)?;
+        
+        if let Some(value_expr) = value {
+            let value_code = self.generate_expression(value_expr)?;
+            self.builder.header_context();
+            self.builder.line(&format!("static const {} {} = {};", type_name, full_const_name, value_code));
+            self.builder.code_context();
+        } else {
+            // Declaration only
+            self.builder.header_context();
+            self.builder.line(&format!("extern const {} {};", type_name, full_const_name));
+            self.builder.code_context();
+        }
+        
+        Ok(())
+    }
+    
     /// Generate code for a statement (placeholder)
     #[allow(dead_code)]
     fn generate_statement(&mut self, _stmt: &Stmt, _builder: &mut CCodeBuilder) -> CodegenResult<()> {
@@ -599,5 +758,71 @@ mod tests {
         };
         
         assert_eq!(generator.generate_type_name(&float_type).unwrap(), "double");
+    }
+    
+    #[test]
+    fn test_impl_block_generation() {
+        let symbol_table = SymbolTable::new();
+        let mut generator = CCodeGenerator::new(symbol_table);
+        
+        // Create an impl block for a struct
+        let impl_block = Item::Impl {
+            generics: Vec::new(),
+            target_type: Type::Path {
+                segments: vec![InternedString::new(10)], // "MyStruct"
+                generics: Vec::new(),
+                span: dummy_span(),
+            },
+            trait_ref: None,
+            items: vec![
+                ImplItem::Function {
+                    visibility: Visibility::Public,
+                    name: InternedString::new(11), // "new"
+                    generics: Vec::new(),
+                    params: vec![],
+                    return_type: Some(Type::Path {
+                        segments: vec![InternedString::new(10)],
+                        generics: Vec::new(),
+                        span: dummy_span(),
+                    }),
+                    body: Some(Expr::Literal {
+                        literal: Literal::Integer {
+                            value: "0".to_string(),
+                            base: crate::lexer::token::NumberBase::Decimal,
+                            suffix: None,
+                        },
+                        span: dummy_span(),
+                    }),
+                    span: dummy_span(),
+                },
+                ImplItem::Const {
+                    visibility: Visibility::Public,
+                    name: InternedString::new(12), // "DEFAULT_VALUE"
+                    type_annotation: Type::Primitive {
+                        kind: PrimitiveType::I32,
+                        span: dummy_span(),
+                    },
+                    value: Some(Expr::Literal {
+                        literal: Literal::Integer {
+                            value: "42".to_string(),
+                            base: crate::lexer::token::NumberBase::Decimal,
+                            suffix: None,
+                        },
+                        span: dummy_span(),
+                    }),
+                    span: dummy_span(),
+                },
+            ],
+            span: dummy_span(),
+        };
+        
+        // Test impl block generation
+        assert!(generator.generate_impl(&impl_block).is_ok());
+        
+        // Verify that the generated code contains method names
+        let header = generator.builder.header();
+        assert!(header.contains("Methods for id_10"));
+        assert!(header.contains("id_10_id_11")); // MyStruct_new
+        assert!(header.contains("id_10_id_12")); // MyStruct_DEFAULT_VALUE
     }
 } 

@@ -242,13 +242,31 @@ impl<'a> ExpressionGenerator<'a> {
         let receiver_code = self.generate_expression(receiver)?;
         let method_name = self.format_identifier(method);
         
+        // For method calls, we need to determine the struct type to generate the proper method name
+        // For now, we'll use a simplified approach that assumes the receiver type can be inferred
+        let struct_name = match receiver {
+            Expr::Identifier { name, .. } => {
+                // Simple case: variable.method()
+                // In a real implementation, we'd look up the type in the symbol table
+                format!("struct_{}", self.format_identifier(name))
+            },
+            _ => {
+                // For complex expressions, we'll use a generic approach
+                "UnknownType".to_string()
+            }
+        };
+        
+        // Generate method call with proper C naming convention: StructName_methodName
+        let full_method_name = format!("{}_{}", struct_name, method_name);
+        
         let mut arg_codes = Vec::new();
-        arg_codes.push(receiver_code); // First argument is the receiver
+        // First argument is always the receiver (either by value or by reference)
+        arg_codes.push(format!("&{}", receiver_code)); // Pass by reference for safety
         for arg in args {
             arg_codes.push(self.generate_expression(arg)?);
         }
         
-        Ok(format!("{}({})", method_name, arg_codes.join(", ")))
+        Ok(format!("{}({})", full_method_name, arg_codes.join(", ")))
     }
     
     /// Generate field access
