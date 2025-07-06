@@ -1,7 +1,7 @@
 //! Main parser implementation for the Bract programming language
 
 use crate::lexer::{Lexer, Token, TokenType, Position};
-use crate::ast::{Module, Item, Expr, Stmt, Span, Visibility, Parameter, InternedString};
+use crate::ast::{Module, Item, Expr, Stmt, Span, Visibility, Parameter, InternedString, Pattern, Type};
 use super::error::{ParseError, ParseResult};
 use std::collections::HashMap;
 
@@ -284,12 +284,18 @@ impl<'a> Parser<'a> {
         if !self.check(&TokenType::RightParen) {
             loop {
                 let param_start = self.current_position();
-                let pattern = self.parse_pattern()?;
                 
-                let type_annotation = if self.match_token(&TokenType::Colon) {
-                    Some(self.parse_type()?)
+                // Check for special self parameters: self, &self, &mut self
+                let (pattern, type_annotation) = if self.is_self_parameter() {
+                    self.parse_self_parameter()?
                 } else {
-                    None
+                    let pattern = self.parse_pattern()?;
+                    let type_annotation = if self.match_token(&TokenType::Colon) {
+                        Some(self.parse_type()?)
+                    } else {
+                        None
+                    };
+                    (pattern, type_annotation)
                 };
                 
                 params.push(Parameter {
@@ -866,5 +872,106 @@ impl<'a> Parser<'a> {
             trailing_expr: trailing_expr.map(Box::new),
             span: Span::new(start_pos, end_pos),
         })
+    }
+    
+    /// Check if current token sequence represents a self parameter
+    fn is_self_parameter(&self) -> bool {
+        match &self.current_token {
+            Some(token) => match &token.token_type {
+                // Direct self parameter
+                TokenType::Identifier(name) if name == "self" => true,
+                // &self or &mut self
+                TokenType::And => {
+                    // We need to look ahead to see if this is &self or &mut self
+                    // This is a simplified check - in a full implementation we'd need proper lookahead
+                    true
+                }
+                _ => false,
+            },
+            None => false,
+        }
+    }
+    
+    /// Parse a self parameter and return the pattern and inferred type
+    fn parse_self_parameter(&mut self) -> ParseResult<(Pattern, Option<Type>)> {
+        let start_pos = self.current_position();
+        
+        if let Some(token) = &self.current_token {
+            match &token.token_type {
+                // Direct self parameter: self
+                TokenType::Identifier(name) if name == "self" => {
+                    self.advance()?;
+                    let pattern = Pattern::Identifier {
+                        name: self.interner.intern("self"),
+                        is_mutable: false,
+                        span: Span::new(start_pos, self.current_position()),
+                    };
+                    // Type will be inferred as the struct type during semantic analysis
+                    let self_type = Type::Path {
+                        segments: vec![self.interner.intern("Self")],
+                        generics: Vec::new(),
+                        span: Span::new(start_pos, self.current_position()),
+                    };
+                    Ok((pattern, Some(self_type)))
+                }
+                // Reference self parameter: &self or &mut self
+                TokenType::And => {
+                    self.advance()?; // consume &
+                    let is_mutable = self.match_token(&TokenType::Mut);
+                    
+                    // Expect 'self' identifier
+                    if let Some(token) = &self.current_token {
+                        if let TokenType::Identifier(name) = &token.token_type {
+                            if name == "self" {
+                                self.advance()?;
+                                let pattern = Pattern::Identifier {
+                                    name: self.interner.intern("self"),
+                                    is_mutable: false, // The reference itself is not mutable
+                                    span: Span::new(start_pos, self.current_position()),
+                                };
+                                // Create reference type to Self
+                                let self_type = Type::Reference {
+                                    is_mutable,
+                                    target_type: Box::new(Type::Path {
+                                        segments: vec![self.interner.intern("Self")],
+                                        generics: Vec::new(),
+                                        span: Span::new(start_pos, self.current_position()),
+                                    }),
+                                    span: Span::new(start_pos, self.current_position()),
+                                };
+                                Ok((pattern, Some(self_type)))
+                            } else {
+                                Err(ParseError::UnexpectedToken {
+                                    expected: vec!["self".to_string()],
+                                    found: token.token_type.clone(),
+                                    position: token.position,
+                                })
+                            }
+                        } else {
+                            Err(ParseError::UnexpectedToken {
+                                expected: vec!["self".to_string()],
+                                found: token.token_type.clone(),
+                                position: token.position,
+                            })
+                        }
+                    } else {
+                        Err(ParseError::UnexpectedEof {
+                            expected: vec!["self".to_string()],
+                            position: self.current_position(),
+                        })
+                    }
+                }
+                _ => Err(ParseError::UnexpectedToken {
+                    expected: vec!["self parameter".to_string()],
+                    found: token.token_type.clone(),
+                    position: token.position,
+                }),
+            }
+        } else {
+            Err(ParseError::UnexpectedEof {
+                expected: vec!["self parameter".to_string()],
+                position: self.current_position(),
+            })
+        }
     }
 } 
