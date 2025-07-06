@@ -132,6 +132,8 @@ impl CCodeGenerator {
     
     /// Generate a function
     fn generate_function(&mut self, item: &Item) -> CodegenResult<()> {
+        self.metrics.record_node(); // Record that we processed a function node
+        
         if let Item::Function { name, params, return_type, body, .. } = item {
             let func_name = self.format_identifier(name);
             

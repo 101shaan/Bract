@@ -109,8 +109,65 @@ impl BuildSystem {
     
     /// Check if a command exists in PATH
     fn command_exists(command: &str) -> bool {
-        Command::new(command)
+        // Handle Windows built-in commands
+        #[cfg(windows)]
+        {
+            let windows_builtins = &[
+                "dir", "cd", "copy", "del", "echo", "type", "cls", 
+                "md", "rd", "ren", "move", "attrib", "find"
+            ];
+            if windows_builtins.contains(&command) {
+                return true;
+            }
+        }
+        
+        // Handle Unix/Linux built-in commands
+        #[cfg(unix)]
+        {
+            let unix_builtins = &[
+                "ls", "cd", "cp", "rm", "mv", "mkdir", "rmdir", 
+                "cat", "echo", "pwd", "chmod", "chown"
+            ];
+            if unix_builtins.contains(&command) {
+                return true;
+            }
+        }
+        
+        // For other commands, try --version first (most common)
+        if Command::new(command)
             .arg("--version")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .is_ok() 
+        {
+            return true;
+        }
+        
+        // If --version fails, try -version (some older tools)
+        if Command::new(command)
+            .arg("-version")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .is_ok() 
+        {
+            return true;
+        }
+        
+        // If both fail, try help flag (Windows style)
+        if Command::new(command)
+            .arg("/?")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .is_ok() 
+        {
+            return true;
+        }
+        
+        // If all else fails, try running the command with no args
+        Command::new(command)
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .status()
