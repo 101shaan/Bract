@@ -10,6 +10,7 @@ serde_json = "1.0"
 tokio = { version = "1.0", features = ["full"] }
 tower-lsp = "0.20"
 env_logger = "0.10"
+byteorder = "1.5"
 
 [[bin]]
 name = "prism_compile_simple"
@@ -26,3 +27,7 @@ path = "src/bin/prism_parse.rs"
 [[bin]]
 name = "prism_lsp"
 path = "src/bin/prism_lsp.rs"
+
+[[bin]]
+name = "prism_native"
+path = "src/bin/prism_native.rs"

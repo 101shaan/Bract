@@ -43,6 +43,10 @@ pub enum CodegenError {
     IoError(String),
     /// Internal compiler error
     InternalError(String),
+    /// LLVM-specific error
+    LlvmError(String),
+    /// Linker error
+    LinkerError(String),
 }
 
 impl std::fmt::Display for CodegenError {
@@ -55,6 +59,8 @@ impl std::fmt::Display for CodegenError {
             CodegenError::TargetLimitation(msg) => write!(f, "Target language limitation: {}", msg),
             CodegenError::IoError(msg) => write!(f, "IO error: {}", msg),
             CodegenError::InternalError(msg) => write!(f, "Internal compiler error: {}", msg),
+            CodegenError::LlvmError(msg) => write!(f, "LLVM error: {}", msg),
+            CodegenError::LinkerError(msg) => write!(f, "Linker error: {}", msg),
         }
     }
 }
