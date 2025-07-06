@@ -105,9 +105,9 @@ impl StatementGenerator {
                 // Determine type
                 let type_name = if let Some(type_ann) = type_annotation {
                     self.generate_type_name(type_ann)?
-                } else if initializer.is_some() {
-                    // Type inference - for now, use a generic type
-                    "auto".to_string()
+                } else if let Some(init) = initializer {
+                    // Basic type inference based on initializer
+                    self.infer_type_from_expression(init)?
                 } else {
                     return Err(CodegenError::TypeConversion(
                         "Variable declaration requires either type annotation or initializer".to_string()
@@ -608,9 +608,43 @@ impl StatementGenerator {
     
     /// Format an identifier for C code
     fn format_identifier(&self, name: &InternedString) -> String {
-        // Convert the interned string to a C-safe identifier
-        // For now, just use the ID as a placeholder
         format!("Bract_symbol_{}", name.id)
+    }
+    
+    /// Infer C type from expression
+    fn infer_type_from_expression(&self, expr: &Expr) -> CodegenResult<String> {
+        match expr {
+            Expr::Literal { literal, .. } => {
+                match literal {
+                    Literal::Integer { .. } => Ok("int32_t".to_string()),
+                    Literal::Float { .. } => Ok("double".to_string()),
+                    Literal::String { .. } => Ok("const char*".to_string()),
+                    Literal::Char(_) => Ok("char".to_string()),
+                    Literal::Bool(_) => Ok("bool".to_string()),
+                    Literal::Null => Ok("void*".to_string()),
+                }
+            },
+            Expr::StructInit { path, .. } => {
+                // For struct initialization, use the struct type
+                let struct_name = path.iter()
+                    .map(|s| format!("id_{}", s.id))
+                    .collect::<Vec<_>>()
+                    .join("_");
+                Ok(struct_name)
+            },
+            Expr::Identifier { .. } => {
+                // For now, assume generic type - would need symbol table lookup
+                Ok("int32_t".to_string())
+            },
+            Expr::Binary { .. } => {
+                // For binary operations, assume int for now
+                Ok("int32_t".to_string())
+            },
+            _ => {
+                // Default to int for other expressions
+                Ok("int32_t".to_string())
+            }
+        }
     }
 }
 

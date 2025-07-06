@@ -39,9 +39,13 @@ typedef struct id_11 {
 } id_11;
 
 // Methods for id_8
+struct id_8 id_8_id_16(double id_9, double id_10) {
+    return (id_8) { .id_9 = id_9, .id_10 = id_10 };
+}
+
 double id_8_id_17(struct id_19* id_18, struct id_8* id_20) {
-    auto Bract_symbol_21 = (id_18.id_9 - id_20.id_9);
-    auto Bract_symbol_22 = (id_18.id_10 - id_20.id_10);
+    int32_t Bract_symbol_21 = (id_18.id_9 - id_20.id_9);
+    int32_t Bract_symbol_22 = (id_18.id_10 - id_20.id_10);
     return (((id_21 * id_21) + (id_22 * id_22))).id_23();
 }
 

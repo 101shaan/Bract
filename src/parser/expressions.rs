@@ -371,6 +371,74 @@ impl<'a> Parser<'a> {
                         };
                     }
                     
+                    // Struct initialization: expr { field: value, ... }
+                    TokenType::LeftBrace => {
+                        // Only handle struct initialization if the current expression is a path
+                        match &expr {
+                            Expr::Identifier { name, .. } => {
+                                // This is struct initialization: StructName { fields... }
+                                let struct_path = vec![*name];
+                                self.advance()?; // consume '{'
+                                
+                                let mut fields = Vec::new();
+                                
+                                if !self.check(&TokenType::RightBrace) {
+                                    loop {
+                                        // Parse field name
+                                        let field_name = if let Some(token) = &self.current_token {
+                                            if let TokenType::Identifier(name) = &token.token_type {
+                                                let field = self.interner.intern(name);
+                                                self.advance()?;
+                                                field
+                                            } else {
+                                                return Err(ParseError::UnexpectedToken {
+                                                    expected: vec!["field name".to_string()],
+                                                    found: token.token_type.clone(),
+                                                    position: token.position,
+                                                });
+                                            }
+                                        } else {
+                                            return Err(ParseError::UnexpectedEof {
+                                                expected: vec!["field name".to_string()],
+                                                position: self.current_position(),
+                                            });
+                                        };
+                                        
+                                        // Expect colon
+                                        self.expect(TokenType::Colon, "struct field initialization")?;
+                                        
+                                        // Parse field value
+                                        let field_value = self.parse_expression()?;
+                                        
+                                        fields.push(crate::ast::FieldInit {
+                                            name: field_name,
+                                            value: Some(field_value),
+                                            span: Span::single(self.current_position()),
+                                        });
+                                        
+                                        if !self.match_token(&TokenType::Comma) {
+                                            break;
+                                        }
+                                        
+                                        if self.check(&TokenType::RightBrace) {
+                                            break; // trailing comma
+                                        }
+                                    }
+                                }
+                                
+                                let end_token = self.expect(TokenType::RightBrace, "struct initialization")?;
+                                let span = Span::new(expr.span().start, end_token.position);
+                                
+                                expr = Expr::StructInit {
+                                    path: struct_path,
+                                    fields,
+                                    span,
+                                };
+                            }
+                            _ => break, // Not a struct initialization, stop postfix parsing
+                        }
+                    }
+                    
                     _ => break, // No more postfix operators
                 }
             } else {
