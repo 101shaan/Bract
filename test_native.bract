@@ -1,9 +1,0 @@
-fn main() -> i32 {
-    let x = 42;
-    let y = calculate_square(x);
-    return y;
-}
-
-fn calculate_square(n: i32) -> i32 {
-    return n * n;
-} 

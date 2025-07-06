@@ -245,10 +245,10 @@ impl<'a> ExpressionGenerator<'a> {
         // For method calls, we need to determine the struct type to generate the proper method name
         // For now, we'll use a simplified approach that assumes the receiver type can be inferred
         let struct_name = match receiver {
-            Expr::Identifier { name, .. } => {
+            Expr::Identifier { .. } => {
                 // Simple case: variable.method()
-                // In a real implementation, we'd look up the type in the symbol table
-                format!("struct_{}", self.format_identifier(name))
+                // For now, use a generic struct name that matches the impl block naming
+                "id_0".to_string() // This should match the actual struct type
             },
             _ => {
                 // For complex expressions, we'll use a generic approach

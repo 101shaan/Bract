@@ -276,6 +276,8 @@ impl<'a> Parser<'a> {
                 TokenType::Tilde => UnaryOp::BitwiseNot,
                 TokenType::Minus => UnaryOp::Negate,
                 TokenType::Plus => UnaryOp::Plus,
+                TokenType::And => UnaryOp::AddressOf,
+                TokenType::Star => UnaryOp::Dereference,
                 _ => return self.parse_postfix_expression(),
             };
             let start_pos = token.position;
@@ -326,7 +328,7 @@ impl<'a> Parser<'a> {
                         };
                     }
                     
-                    // Field access: expr.field
+                    // Field access: expr.field or Method call: expr.method(args)
                     TokenType::Dot => {
                         self.advance()?; // consume '.'
                         
@@ -336,12 +338,41 @@ impl<'a> Parser<'a> {
                                 let field_pos = field_token.position;
                                 self.advance()?;
                                 
-                                let span = Span::new(expr.span().start, field_pos);
-                                expr = Expr::FieldAccess {
-                                    object: Box::new(expr),
-                                    field,
-                                    span,
-                                };
+                                // Check if this is a method call (followed by '(')
+                                if self.check(&TokenType::LeftParen) {
+                                    // This is a method call: expr.method(args)
+                                    self.advance()?; // consume '('
+                                    let mut args = Vec::new();
+                                    
+                                    if !self.check(&TokenType::RightParen) {
+                                        args.push(self.parse_expression()?);
+                                        
+                                        while self.match_token(&TokenType::Comma) {
+                                            if self.check(&TokenType::RightParen) {
+                                                break; // trailing comma
+                                            }
+                                            args.push(self.parse_expression()?);
+                                        }
+                                    }
+                                    
+                                    let end_token = self.expect(TokenType::RightParen, "method call")?;
+                                    let span = Span::new(expr.span().start, end_token.position);
+                                    
+                                    expr = Expr::MethodCall {
+                                        receiver: Box::new(expr),
+                                        method: field,
+                                        args,
+                                        span,
+                                    };
+                                } else {
+                                    // This is field access: expr.field
+                                    let span = Span::new(expr.span().start, field_pos);
+                                    expr = Expr::FieldAccess {
+                                        object: Box::new(expr),
+                                        field,
+                                        span,
+                                    };
+                                }
                             } else {
                                 return Err(ParseError::UnexpectedToken {
                                     expected: vec!["field name".to_string()],

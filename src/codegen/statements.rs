@@ -117,8 +117,18 @@ impl StatementGenerator {
                 // Generate declaration
                 if let Some(init) = initializer {
                     let mut expr_gen = ExpressionGenerator::new(context);
-                    let init_code = expr_gen.generate_expression(init)?;
-                    builder.line(&format!("{} {} = {};", type_name, var_name, init_code));
+                    
+                    // Special handling for array literals
+                    match init {
+                        Expr::Array { elements, .. } => {
+                            let init_code = expr_gen.generate_expression(init)?;
+                            builder.line(&format!("{} {}[{}] = {};", type_name, var_name, elements.len(), init_code));
+                        },
+                        _ => {
+                            let init_code = expr_gen.generate_expression(init)?;
+                            builder.line(&format!("{} {} = {};", type_name, var_name, init_code));
+                        }
+                    }
                 } else {
                     builder.line(&format!("{} {};", type_name, var_name));
                 }
@@ -632,6 +642,11 @@ impl StatementGenerator {
                     .join("_");
                 Ok(struct_name)
             },
+            Expr::MethodCall { .. } => {
+                // For method calls, assume they return a generic type
+                // In a real implementation, this would look up the method signature
+                Ok("double".to_string())
+            },
             Expr::Identifier { .. } => {
                 // For now, assume generic type - would need symbol table lookup
                 Ok("int32_t".to_string())
@@ -639,6 +654,14 @@ impl StatementGenerator {
             Expr::Binary { .. } => {
                 // For binary operations, assume int for now
                 Ok("int32_t".to_string())
+            },
+            Expr::Array { elements, .. } => {
+                // For array literals, return the element type - the array size will be handled separately
+                if let Some(first_element) = elements.first() {
+                    self.infer_type_from_expression(first_element)
+                } else {
+                    Ok("int32_t".to_string())
+                }
             },
             _ => {
                 // Default to int for other expressions
