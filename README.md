@@ -103,3 +103,5 @@ MIT License - see [LICENSE](LICENSE) for details
 **"Refract complexity into clarity"** ✨
 
 *Built with ❤️ and lots of ⚡*
+
+*LLMs have been leveraged to help transform my ideas for the language into ARCHITECTURE.md, GRAMMAR.MD, LANGUAGE_SPEC.md and the README.md.*
