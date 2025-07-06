@@ -1,5 +1,5 @@
 [package]
-name = "prism"
+name = "bract"
 version = "0.1.0"
 edition = "2021"
 
@@ -13,21 +13,21 @@ env_logger = "0.10"
 byteorder = "1.5"
 
 [[bin]]
-name = "prism_compile_simple"
-path = "src/bin/prism_compile_simple.rs"
+name = "bract_compile_simple"
+path = "src/bin/bract_compile_simple.rs"
 
 [[bin]]
-name = "prism_compile"
-path = "src/bin/prism_compile.rs"
+name = "bract_compile"
+path = "src/bin/bract_compile.rs"
 
 [[bin]]
-name = "prism_parse"
-path = "src/bin/prism_parse.rs"
+name = "bract_parse"
+path = "src/bin/bract_parse.rs"
 
 [[bin]]
-name = "prism_lsp"
-path = "src/bin/prism_lsp.rs"
+name = "bract_lsp"
+path = "src/bin/bract_lsp.rs"
 
 [[bin]]
-name = "prism_native"
-path = "src/bin/prism_native.rs"
+name = "bract_native"
+path = "src/bin/bract_native.rs"

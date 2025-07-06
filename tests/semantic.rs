@@ -1,9 +1,9 @@
 //! Semantic analysis integration tests
 //! 
 //! These tests validate the semantic analyzer's ability to perform type checking
-//! and symbol resolution on real Prism code.
+//! and symbol resolution on real Bract code.
 
-use prism::{Parser, semantic::SemanticAnalyzer};
+use bract::{Parser, semantic::SemanticAnalyzer};
 
 /// Test semantic analysis of a simple program
 #[test]

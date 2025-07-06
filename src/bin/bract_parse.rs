@@ -1,15 +1,15 @@
-//! CLI tool to parse Prism source code and display the AST
+//! CLI tool to parse Bract source code and display the AST
 //! 
-//! Usage: cargo run --bin prism_parse -- "expression or code"
+//! Usage: cargo run --bin Bract_parse -- "expression or code"
 
-use prism::Parser;
+use bract::Parser;
 use std::env;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
     
     if args.len() != 2 {
-        eprintln!("Usage: {} <prism_code>", args[0]);
+        eprintln!("Usage: {} <Bract_code>", args[0]);
         eprintln!("Example: {} \"1 + 2 * 3\"", args[0]);
         std::process::exit(1);
     }

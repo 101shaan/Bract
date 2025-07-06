@@ -1,4 +1,4 @@
-//! Type parsing for Prism programming language
+//! Type parsing for Bract programming language
 //!
 //! This module handles parsing of all type expressions according to EBNF grammar:
 //! - Primitive types (i32, f64, bool, char, str)

@@ -1,13 +1,13 @@
 
-![Prism(1)_PhotoGrid](https://github.com/user-attachments/assets/ffd9b8b2-5c6c-4d70-a785-2096df58eb57)
+![Bract(1)_PhotoGrid](https://github.com/user-attachments/assets/ffd9b8b2-5c6c-4d70-a785-2096df58eb57)
 
 > A blazingly fast, memory-safe systems programming language that compiles to native machine code
 
 **Status:** Later Development
 
-## What is Prism?
+## What is Bract?
 
-Prism is a modern systems programming language designed for **speed**, **safety**, and **clarity**. It combines the performance of C/Rust with the expressiveness of modern languages, featuring:
+Bract is a modern systems programming language designed for **speed**, **safety**, and **clarity**. It combines the performance of C/Rust with the expressiveness of modern languages, featuring:
 
 - ⚡ **Lightning-fast compilation** to native machine code
 - 🛡️ **Memory safety** without garbage collection
@@ -18,10 +18,10 @@ Prism is a modern systems programming language designed for **speed**, **safety*
 
 ## Quick Example
 
-```prism
+```Bract
 // Coming soon! Language syntax in active development
 fn main() {
-    println("Hello, Prism! ⚡")
+    println("Hello, Bract! ⚡")
 }
 ```
 
@@ -68,14 +68,14 @@ fn main() {
 - Git
 
 ```bash
-git clone https://github.com/yourusername/prism-lang
-cd prism-lang
+git clone https://github.com/yourusername/Bract-lang
+cd Bract-lang
 cargo build --release
 ```
 
 ## Contributing
 
-Prism is in very early development. Contributions are welcome!
+Bract is in very early development. Contributions are welcome!
 
 - 🐛 **Bug reports** - Open an issue
 - 💡 **Feature suggestions** - Start a discussion
@@ -91,7 +91,7 @@ Prism is in very early development. Contributions are welcome!
 ## Community
 
 - **Discord:** Coming soon
-- **Twitter:** [@PrismLang](https://twitter.com/prismlang) (Coming soon)
+- **Twitter:** [@BractLang](https://twitter.com/Bractlang) (Coming soon)
 - **Forum:** GitHub Discussions
 
 ## License

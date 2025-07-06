@@ -1,4 +1,4 @@
-//! Semantic Analysis Module for Prism
+//! Semantic Analysis Module for Bract
 //!
 //! This module provides comprehensive semantic analysis capabilities including:
 //! - Symbol table management and scope resolution

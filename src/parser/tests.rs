@@ -1,4 +1,4 @@
-//! Parser tests for the Prism programming language
+//! Parser tests for the Bract programming language
 
 #[cfg(test)]
 mod tests {

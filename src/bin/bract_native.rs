@@ -1,10 +1,10 @@
-//! Prism Native Compiler - High-Performance Direct Executable Generation
+//! Bract Native Compiler - High-Performance Direct Executable Generation
 //!
 //! This compiler generates highly optimized executables by leveraging aggressive
 //! C compiler optimizations and direct binary generation, achieving near-native
 //! performance while maintaining cross-platform compatibility.
 
-use prism::{
+use bract::{
     Parser,
     semantic::SemanticAnalyzer,
     codegen::{CCodeGenerator, build::{BuildSystem, BuildConfigBuilder, CCompiler}},
@@ -28,7 +28,7 @@ pub enum OptimizationLevel {
 /// Command line arguments for native compilation
 #[derive(Debug)]
 struct Args {
-    /// Input Prism file
+    /// Input Bract file
     input_file: PathBuf,
     /// Output executable path
     output_file: PathBuf,
@@ -53,7 +53,7 @@ impl Args {
         let args: Vec<String> = env::args().collect();
         
         if args.len() < 2 {
-            return Err("Usage: prism_native <input.prism> [options]".to_string());
+            return Err("Usage: Bract_native <input.Bract> [options]".to_string());
         }
         
         let input_file = PathBuf::from(&args[1]);
@@ -142,17 +142,17 @@ fn main() {
         }
     };
     
-    if let Err(e) = compile_prism_native(&args) {
+    if let Err(e) = compile_bract_native(&args) {
         eprintln!("Native compilation failed: {}", e);
         process::exit(1);
     }
 }
 
 fn print_usage() {
-    println!("Prism Native Compiler - High-Performance Direct Executable Generation");
+    println!("Bract Native Compiler - High-Performance Direct Executable Generation");
     println!();
     println!("USAGE:");
-    println!("    prism_native <input.prism> [OPTIONS]");
+    println!("    Bract_native <input.Bract> [OPTIONS]");
     println!();
     println!("OPTIONS:");
     println!("    -o, --output <FILE>    Output executable [default: <input>.exe]");
@@ -168,16 +168,16 @@ fn print_usage() {
     println!("    --strip                Strip symbols from binary");
     println!();
     println!("EXAMPLES:");
-    println!("    prism_native hello.prism");
-    println!("    prism_native hello.prism --extreme --strip -o hello_opt");
-    println!("    prism_native hello.prism --show-c -v");
+    println!("    Bract_native hello.Bract");
+    println!("    Bract_native hello.Bract --extreme --strip -o hello_opt");
+    println!("    Bract_native hello.Bract --show-c -v");
 }
 
-fn compile_prism_native(args: &Args) -> Result<(), Box<dyn std::error::Error>> {
+fn compile_bract_native(args: &Args) -> Result<(), Box<dyn std::error::Error>> {
     let start_time = Instant::now();
     
     if args.verbose {
-        println!("🚀 Prism Native Compiler - High-Performance Mode");
+        println!("🚀 Bract Native Compiler - High-Performance Mode");
         println!("Input file: {}", args.input_file.display());
         println!("Output file: {}", args.output_file.display());
         println!("Optimization: {:?}", args.optimization);
@@ -253,7 +253,7 @@ fn compile_prism_native(args: &Args) -> Result<(), Box<dyn std::error::Error>> {
     }
     
     // Create output directory
-    let temp_dir = std::env::temp_dir().join("prism_native");
+    let temp_dir = std::env::temp_dir().join("Bract_native");
     fs::create_dir_all(&temp_dir)
         .map_err(|e| format!("Failed to create temp directory: {}", e))?;
     
@@ -292,7 +292,7 @@ fn compile_prism_native(args: &Args) -> Result<(), Box<dyn std::error::Error>> {
         println!("🏗️  Generating runtime system...");
     }
     
-    let mut runtime_gen = prism::codegen::runtime::RuntimeGenerator::new();
+    let mut runtime_gen = bract::codegen::runtime::RuntimeGenerator::new();
     runtime_gen.write_runtime_files(&temp_dir)
         .map_err(|e| format!("Failed to generate runtime: {}", e))?;
     
@@ -337,7 +337,7 @@ fn compile_prism_native(args: &Args) -> Result<(), Box<dyn std::error::Error>> {
         // Compile with extreme optimizations
         let source_files = vec![
             impl_path,
-            temp_dir.join("prism_runtime.c"),
+            temp_dir.join("Bract_runtime.c"),
         ];
         
         let executable_name = if cfg!(windows) {
@@ -469,7 +469,7 @@ mod tests {
     #[test]
     fn test_simple_native_compilation() {
         let temp_dir = TempDir::new().unwrap();
-        let test_file = temp_dir.path().join("test.prism");
+        let test_file = temp_dir.path().join("test.Bract");
         
         let mut file = File::create(&test_file).unwrap();
         writeln!(file, "fn main() -> i32 {{ return 42; }}").unwrap();

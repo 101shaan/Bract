@@ -1,9 +1,9 @@
-//! Simplified Prism Compiler CLI 
+//! Simplified Bract Compiler CLI 
 //!
-//! This demonstrates the complete Prism compilation pipeline:
+//! This demonstrates the complete Bract compilation pipeline:
 //! Source Code → Parsing → Semantic Analysis → C Code Generation
 
-use prism::{
+use bract::{
     Parser,
     semantic::{SemanticAnalyzer},
     codegen::{CCodeGenerator, runtime::RuntimeGenerator},
@@ -18,14 +18,14 @@ fn main() {
     let args: Vec<String> = env::args().collect();
     
     if args.len() < 2 {
-        println!("🚀 Prism Compiler - Phase 5 Code Generation Demo");
+        println!("🚀 Bract Compiler - Phase 5 Code Generation Demo");
         println!();
         println!("USAGE:");
-        println!("    prism_compile_simple <input.prism> [output_dir]");
+        println!("    Bract_compile_simple <input.Bract> [output_dir]");
         println!();
         println!("EXAMPLES:");
-        println!("    prism_compile_simple hello.prism");
-        println!("    prism_compile_simple hello.prism output/");
+        println!("    Bract_compile_simple hello.Bract");
+        println!("    Bract_compile_simple hello.Bract output/");
         process::exit(1);
     }
     
@@ -36,16 +36,16 @@ fn main() {
         PathBuf::from("target")
     };
     
-    if let Err(e) = compile_prism_file(&input_file, &output_dir) {
+    if let Err(e) = compile_bract_file(&input_file, &output_dir) {
         eprintln!("❌ Compilation failed: {}", e);
         process::exit(1);
     }
 }
 
-fn compile_prism_file(input_file: &PathBuf, output_dir: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
+fn compile_bract_file(input_file: &PathBuf, output_dir: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
     let start_time = Instant::now();
     
-    println!("🚀 Prism Compiler - Phase 5 Code Generation");
+    println!("🚀 Bract Compiler - Phase 5 Code Generation");
     println!("Input: {}", input_file.display());
     println!("Output: {}", output_dir.display());
     println!();
@@ -135,11 +135,11 @@ fn compile_prism_file(input_file: &PathBuf, output_dir: &PathBuf) -> Result<(), 
     println!("📁 Generated files in {}/:", output_dir.display());
     println!("   {}.h - Header file", input_stem);
     println!("   {}.c - Implementation", input_stem);
-    println!("   prism_runtime.h - Runtime header");
-    println!("   prism_runtime.c - Runtime implementation");
+    println!("   Bract_runtime.h - Runtime header");
+    println!("   Bract_runtime.c - Runtime implementation");
     println!();
     println!("🔨 To compile with gcc:");
-    println!("   gcc {}/{}.c {}/prism_runtime.c -o {}/{}", 
+    println!("   gcc {}/{}.c {}/Bract_runtime.c -o {}/{}", 
         output_dir.display(), input_stem,
         output_dir.display(), 
         output_dir.display(), input_stem);
@@ -153,7 +153,7 @@ mod tests {
     use super::*;
     use std::fs;
     
-    const SIMPLE_PRISM_PROGRAM: &str = r#"
+    const SIMPLE_BRACT_PROGRAM: &str = r#"
 fn main() -> i32 {
     return 42;
 }
@@ -167,14 +167,14 @@ fn add(a: i32, b: i32) -> i32 {
     fn test_simple_compilation() {
         // Create a temporary file
         let temp_dir = std::env::temp_dir();
-        let test_file = temp_dir.join("test_simple.prism");
-        let output_dir = temp_dir.join("prism_test_output");
+        let test_file = temp_dir.join("test_simple.Bract");
+        let output_dir = temp_dir.join("Bract_test_output");
         
         // Write test program
-        fs::write(&test_file, SIMPLE_PRISM_PROGRAM).unwrap();
+        fs::write(&test_file, SIMPLE_BRACT_PROGRAM).unwrap();
         
         // Try to compile (this may fail due to incomplete implementation)
-        let result = compile_prism_file(&test_file, &output_dir);
+        let result = compile_bract_file(&test_file, &output_dir);
         
         // Clean up
         let _ = fs::remove_file(&test_file);

@@ -1,6 +1,6 @@
-//! Language Server Protocol Implementation for Prism
+//! Language Server Protocol Implementation for Bract
 //!
-//! This module provides a complete LSP server for Prism, enabling world-class IDE support
+//! This module provides a complete LSP server for Bract, enabling world-class IDE support
 //! with real-time diagnostics, code completion, navigation, and more.
 
 use crate::{Lexer, Parser, semantic::SemanticAnalyzer};
@@ -256,7 +256,7 @@ impl Default for ServerCapabilities {
                 save: Some(SaveOptions { include_text: false }),
             },
             diagnostic_provider: Some(DiagnosticOptions {
-                identifier: Some("prism".to_string()),
+                identifier: Some("Bract".to_string()),
                 inter_file_dependencies: true,
                 workspace_diagnostics: true,
             }),
@@ -411,7 +411,7 @@ impl LspServer {
             },
             severity: Some(DiagnosticSeverity::Error),
             code: None,
-            source: Some("prism".to_string()),
+            source: Some("Bract".to_string()),
             message: error,
             related_information: None,
         }
@@ -479,7 +479,7 @@ mod tests {
         let server = LspServer::new();
         
         // Add document
-        let uri = "file:///test.prism".to_string();
+        let uri = "file:///test.Bract".to_string();
         let content = "fn main() { println!(\"Hello\"); }".to_string();
         
         assert!(server.update_document(uri.clone(), content.clone(), 1).is_ok());
@@ -509,7 +509,7 @@ mod tests {
         
         assert_eq!(diagnostic.message, "Test error");
         assert!(matches!(diagnostic.severity, Some(DiagnosticSeverity::Error)));
-        assert_eq!(diagnostic.source, Some("prism".to_string()));
+        assert_eq!(diagnostic.source, Some("Bract".to_string()));
     }
 
     #[test]

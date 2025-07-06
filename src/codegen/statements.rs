@@ -1,6 +1,6 @@
-//! Statement Code Generation for Prism
+//! Statement Code Generation for Bract
 //!
-//! This module handles the translation of Prism statements to C code.
+//! This module handles the translation of Bract statements to C code.
 //! It manages control flow, variable declarations, and statement sequences.
 
 use super::{CodegenContext, CCodeBuilder, CodegenResult, CodegenError, expressions::ExpressionGenerator};
@@ -282,7 +282,7 @@ impl StatementGenerator {
                 let iter_var = format!("{}_iter", var_name);
                 let len_var = format!("{}_len", var_name);
                 
-                builder.line(&format!("prism_array_t {} = {};", iter_var, iterable_code));
+                builder.line(&format!("Bract_array_t {} = {};", iter_var, iterable_code));
                 builder.line(&format!("size_t {} = {}.length;", len_var, iter_var));
                 builder.line(&format!("for (size_t i = 0; i < {}; i++) {{", len_var));
                 builder.indent_inc();
@@ -575,14 +575,14 @@ impl StatementGenerator {
                     PrimitiveType::F64 => "double",
                     PrimitiveType::Bool => "bool",
                     PrimitiveType::Char => "char32_t",
-                    PrimitiveType::Str => "prism_str_t",
+                    PrimitiveType::Str => "Bract_str_t",
                     PrimitiveType::Unit => "void",
                 };
                 Ok(type_name.to_string())
             },
             Type::Array { element_type, .. } => {
                 let elem_type = self.generate_type_name(element_type)?;
-                Ok(format!("prism_array_t /* {} */", elem_type))
+                Ok(format!("Bract_array_t /* {} */", elem_type))
             },
             Type::Reference { target_type, .. } => {
                 let target = self.generate_type_name(target_type)?;
@@ -610,7 +610,7 @@ impl StatementGenerator {
     fn format_identifier(&self, name: &InternedString) -> String {
         // Convert the interned string to a C-safe identifier
         // For now, just use the ID as a placeholder
-        format!("prism_symbol_{}", name.id)
+        format!("Bract_symbol_{}", name.id)
     }
 }
 
@@ -684,7 +684,7 @@ mod tests {
         
         stmt_gen.generate_statement(&stmt, &mut context, &mut builder).unwrap();
         let code = builder.code();
-        assert!(code.contains("prism_symbol_1"));
+        assert!(code.contains("Bract_symbol_1"));
         assert!(code.contains("10"));
     }
     

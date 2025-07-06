@@ -1,11 +1,11 @@
 //! Lexer integration tests
 //! 
-//! These tests validate the lexer's ability to tokenize real Prism code
+//! These tests validate the lexer's ability to tokenize real Bract code
 //! and handle complex scenarios that go beyond unit tests.
 
-use prism::lexer::{Lexer, TokenType};
+use bract::lexer::{Lexer, TokenType};
 
-/// Test lexing a complete Prism program
+/// Test lexing a complete Bract program
 #[test]
 fn test_lex_complete_program() {
     let source = r#"
@@ -181,7 +181,7 @@ fn test_lex_numeric_literals() {
 fn test_lex_performance() {
     use std::time::Instant;
     
-    // Generate a large Prism program
+    // Generate a large Bract program
     let mut functions = Vec::new();
     for i in 0..1000 {
         let func_name = format!("func_{}", i);

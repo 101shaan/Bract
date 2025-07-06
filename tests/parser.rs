@@ -1,11 +1,11 @@
 //! Parser integration tests
 //! 
-//! These tests validate the parser's ability to generate ASTs from real Prism code
+//! These tests validate the parser's ability to generate ASTs from real Bract code
 //! and handle complex parsing scenarios beyond unit tests.
 
-use prism::{Parser, ast::*};
+use bract::{Parser, ast::*};
 
-/// Test parsing a complete Prism program
+/// Test parsing a complete Bract program
 #[test]
 fn test_parse_complete_program() {
     let source = r#"
@@ -360,7 +360,7 @@ fn test_parse_pattern_matching() {
 fn test_parse_performance() {
     use std::time::Instant;
     
-    // Generate a large Prism program
+    // Generate a large Bract program
     let mut source = String::new();
     source.push_str("fn main() -> i32 {\n");
     

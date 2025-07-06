@@ -1,4 +1,4 @@
-//! Statement parsing for Prism programming language
+//! Statement parsing for Bract programming language
 //!
 //! This module handles parsing of all statement types including:
 //! - Let bindings with patterns and type annotations

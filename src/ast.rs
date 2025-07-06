@@ -1,4 +1,4 @@
-//! Abstract Syntax Tree (AST) definitions for the Prism programming language
+//! Abstract Syntax Tree (AST) definitions for the Bract programming language
 //!
 //! This module defines all AST node types following the grammar specification.
 //! The design prioritizes:

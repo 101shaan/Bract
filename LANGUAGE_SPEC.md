@@ -1,8 +1,8 @@
-# Prism Language Specification (v0.1 – Early Draft)
+# Bract Language Specification (v0.1 – Early Draft)
 
 > **Status:** Draft for community review.  Out-of-date sections are marked ⓘ and will be revised as the implementation evolves.  Corrections and PRs welcome.
 
-Prism is a _statically-typed, ahead-of-time (AOT) compiled_ systems programming language focused on blazing-fast builds, predictable performance, and _memory-safety without a garbage collector_.  Its design draws inspiration from C, Rust, Swift, and ML languages, while maintaining a syntax that reads naturally to programmers coming from modern C-style languages.
+Bract is a _statically-typed, ahead-of-time (AOT) compiled_ systems programming language focused on blazing-fast builds, predictable performance, and _memory-safety without a garbage collector_.  Its design draws inspiration from C, Rust, Swift, and ML languages, while maintaining a syntax that reads naturally to programmers coming from modern C-style languages.
 
 This document is the **normative reference** for the language—tooling, compilers, and linters _must_ follow it.  Examples are **non-normative** and shown in • **bold monospace** blocks.
 
@@ -36,7 +36,7 @@ This document is the **normative reference** for the language—tooling, compile
 ## 1. Lexical Structure
 
 ### 1.1 Source Encoding
-Prism source files **must** be valid _UTF-8_.  The compiler rejects any ill-formed sequences.
+Bract source files **must** be valid _UTF-8_.  The compiler rejects any ill-formed sequences.
 
 ### 1.2 Line Terminators
 Line terminators are `\u000A` LF (`\n`) or `\u000D` CRLF (`\r\n`).  They are interchangeable outside of string literals.
@@ -80,7 +80,7 @@ abort break box const continue do else enum extern false fn for if impl in let l
 <a name="syntactic-grammar"></a>
 ## 2. Syntactic Grammar
 
-Prism uses an LL(*) grammar amenable to deterministic parsing with limited backtracking.
+Bract uses an LL(*) grammar amenable to deterministic parsing with limited backtracking.
 The grammar is provided here in abridged EBNF; Appendix A contains the full set.
 
 ```
@@ -111,7 +111,7 @@ Control statements include `if`, `while`, `for`, and `loop`.
 A Hindley-Milner-style algorithm with local modifications: inference is _lexically-scoped_ and does not cross function boundaries.  All generic parameters must be resolvable at monomorphisation time.
 
 ### 3.2 Subtyping & Coercions
-Prism has **no implicit subtyping** except:
+Bract has **no implicit subtyping** except:
 * Numeric literals → any numeric type of sufficient width.
 * `&mut T` → `&T` (readonly coerces).
 * Arrays of fixed length `N` → slice `&[T]`.
@@ -123,7 +123,7 @@ All other conversions require explicit casts: `as` keyword or trait method.
 <a name="memory-model"></a>
 ## 4. Memory Model
 
-Prism adopts an **ownership/borrowing** scheme enforced at compile-time.
+Bract adopts an **ownership/borrowing** scheme enforced at compile-time.
 
 1. **Move Semantics** – binding assignment (`let a = b;`) _moves_ unless the type implements `Copy` marker trait.
 2. **Borrowing** – `&T` (shared) / `&mut T` (exclusive) with lexical _lifetimes_ automatically inferred.
@@ -138,7 +138,7 @@ Implementation uses stack allocation by default; `box` places objects on the hea
 
 The compiler infers lifetimes but exposes them conceptually using the `'a` syntax familiar from Rust.  These examples are **illustrative only**; programmers rarely write explicit lifetimes.
 
-```prism
+```Bract
 // A reference that must outlive the returned reference.
 fn first<'a, T>(slice: &'a [T]) -> &'a T {
     &slice[0]
@@ -174,7 +174,7 @@ let r2 = &mut data;  // ERROR: cannot borrow `data` as mutable because it is als
 Shadowing is permitted; each `let` introduces a new binding.
 
 Destructuring patterns allowed:
-```prism
+```Bract
 let (x, y) = point;
 let Point { x, y: yy } = point;
 ```
@@ -184,7 +184,7 @@ let Point { x, y: yy } = point;
 <a name="functions--closures"></a>
 ## 6. Functions & Closures
 
-```prism
+```Bract
 fn max<T: Ord>(a: T, b: T) -> T {
     if a > b { a } else { b }
 }
@@ -224,7 +224,7 @@ See full precedence list in Appendix B.
 ## 9. Data Declarations
 
 ### 9.1 Structs
-```prism
+```Bract
 pub struct Rect {
     width:  u32,
     height: u32,
@@ -234,7 +234,7 @@ pub struct Rect {
 * Default constructor `Rect { width: 0, height: 0 }`.
 
 ### 9.2 Enums
-```prism
+```Bract
 enum Result<T, E> {
     Ok(T),
     Err(E),
@@ -260,7 +260,7 @@ Pattern ::= '_' | Literal | IDENT | '&' Pattern | '&mut' Pattern | StructPat | E
 ```
 
 Example:
-```prism
+```Bract
 match msg {
     Message::Move { x, y } => handle_move(x, y),
     Message::Quit         => quit(),
@@ -279,7 +279,7 @@ Refutability rules follow Rust's model.
 * `use path::{item1, item2 as alias2};` inserts names into local scope.
 * **Privacy:** Items are private to the module unless prefixed by `pub`.
 
-Manifest file `Prism.toml` describes package metadata and dependencies.
+Manifest file `Bract.toml` describes package metadata and dependencies.
 
 ---
 
@@ -287,7 +287,7 @@ Manifest file `Prism.toml` describes package metadata and dependencies.
 ## 12. Error Handling
 
 1. **Recoverable:** `Result<T, E>` enriched with `?` propagation operator.
-2. **Unrecoverable:** `panic!(msg)` _aborts the process by default_; no stack-unwinding is performed so that the happy path pays **zero runtime cost**.  A project may opt into unwinding for test or FFI scenarios with `prismc --panic=unwind` or crate-level attribute `#![panic_strategy = "unwind"]`.
+2. **Unrecoverable:** `panic!(msg)` _aborts the process by default_; no stack-unwinding is performed so that the happy path pays **zero runtime cost**.  A project may opt into unwinding for test or FFI scenarios with `Bractc --panic=unwind` or crate-level attribute `#![panic_strategy = "unwind"]`.
 3. **Option<T>** for presence/absence.
 4. **Best practice:** library APIs should prefer `Result` over `panic!` for errors that a caller can reasonably recover from.
 
@@ -296,7 +296,7 @@ Manifest file `Prism.toml` describes package metadata and dependencies.
 <a name="concurrency--atomics"></a>
 ## 13. Concurrency & Atomics
 
-Prism's standard library provides:
+Bract's standard library provides:
 * `std::thread::spawn(closure) -> JoinHandle` – OS thread per call.
 * `channel()` – multi-producer, single-consumer MPSC channel.
 * `Mutex<T>`, `RwLock<T>`, `Atomic*` primitives.
@@ -307,7 +307,7 @@ Safe concurrency is enforced by two _auto-traits_ (planned): **`Send`** for valu
 
 > **Note:** low-level atomics are `unsafe` to use incorrectly; prefer higher-level `Arc<Mutex<T>>` patterns where possible.
 
-The underlying memory ordering semantics follow **C++20**'s _sequenced-before_ model with `Acquire`, `Release`, and `AcqRel` orderings.  Data races are undefined behaviour and rejected in _safe_ Prism code.
+The underlying memory ordering semantics follow **C++20**'s _sequenced-before_ model with `Acquire`, `Release`, and `AcqRel` orderings.  Data races are undefined behaviour and rejected in _safe_ Bract code.
 
 ---
 
@@ -315,7 +315,7 @@ The underlying memory ordering semantics follow **C++20**'s _sequenced-before_ m
 ## 14. Attributes & Metadata
 
 Attributes modify compilation semantics:
-```prism
+```Bract
 #[inline(always)]
 fn fast() { … }
 
@@ -329,27 +329,27 @@ Syntax: `#` `[` MetaItem `]` with nested key-value pairs.
 <a name="toolchain--compilation-model"></a>
 ## 15. Toolchain & Compilation Model
 
-* **Compiler:** `prismc` front-end → HIR → MIR → LLVM IR.
+* **Compiler:** `Bractc` front-end → HIR → MIR → LLVM IR.
 * **Incremental:** a _fine-grained content hash_ is recorded for every item (function, impl, monomorphised instance).  When any upstream change occurs, only artifacts whose hash changes are re-optimized and re-linked, enabling sub-second rebuilds on large crates.
   * Hash keys incorporate _generic parameter instantiation_ so that `Vec<u8>` and `Vec<u16>` are tracked independently.
-  * The dependency graph is persisted in `.prism/cache` and versioned by compiler revision; stale caches are ignored safely.
+  * The dependency graph is persisted in `.Bract/cache` and versioned by compiler revision; stale caches are ignored safely.
   * A future milestone will add _cross-crate incremental_ once the on-disk format stabilizes.
 * **Optimization levels:** `-O0`, `-O2` (default), `-O3`, `-Os`.
 * **Linkage:** static by default, dynamic with `--shared`.
 * **Target triples** follow LLVM naming (`x86_64-pc-windows-msvc`).
-* **Build tool:** `prism build`, `prism test`, `prism run` (analogue to Cargo).
+* **Build tool:** `Bract build`, `Bract test`, `Bract run` (analogue to Cargo).
 
 ### 15.1 Foreign-Function Interface (FFI)
 
-Prism can call into, and be called from, C with predictable layout and calling conventions:
+Bract can call into, and be called from, C with predictable layout and calling conventions:
 
 * `extern "C" fn` declares a function with the platform C ABI.
 * `#[repr(C)]` on `struct` and `enum` guarantees field order and tag layout compatible with C.
-* `unsafe extern "C" fn callback()` allows Prism functions to be passed to C libraries.
+* `unsafe extern "C" fn callback()` allows Bract functions to be passed to C libraries.
 
-All FFI boundaries are **`unsafe`** because the compiler cannot validate contracts on the other side.  Idiomatic Prism code wraps raw FFI handles in safe RAII abstractions:
+All FFI boundaries are **`unsafe`** because the compiler cannot validate contracts on the other side.  Idiomatic Bract code wraps raw FFI handles in safe RAII abstractions:
 
-```prism
+```Bract
 #[repr(C)]
 pub struct FILE;
 
@@ -394,7 +394,7 @@ The **prelude** (`use std::prelude::*;`) is implicitly imported into every modul
 
 Code that targets bare-metal or kernel environments may disable the full standard library:
 
-```prism
+```Bract
 #![no_std]
 ```
 

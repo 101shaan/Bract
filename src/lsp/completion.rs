@@ -1,4 +1,4 @@
-//! Code Completion Support for Prism LSP
+//! Code Completion Support for Bract LSP
 //!
 //! This module provides intelligent code completion based on semantic analysis,
 //! context-aware suggestions, and performance optimization.
@@ -555,7 +555,7 @@ mod tests {
     fn test_relevance_scoring() {
         let provider = CompletionProvider::new();
         let context = CompletionContext {
-            uri: "test.prism".to_string(),
+            uri: "test.Bract".to_string(),
             position: Position { line: 0, character: 0 },
             line_content: "fn".to_string(),
             char_before: None,

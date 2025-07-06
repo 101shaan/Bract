@@ -1,4 +1,4 @@
-//! Main parser implementation for the Prism programming language
+//! Main parser implementation for the Bract programming language
 
 use crate::lexer::{Lexer, Token, TokenType, Position};
 use crate::ast::{Module, Item, Expr, Stmt, Span, Visibility, Parameter, InternedString};

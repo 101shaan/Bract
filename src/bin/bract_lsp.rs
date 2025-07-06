@@ -1,6 +1,6 @@
-//! Prism Language Server
+//! Bract Language Server
 //!
-//! This is the main entry point for the Prism Language Server Protocol (LSP) server.
+//! This is the main entry point for the Bract Language Server Protocol (LSP) server.
 //! It provides comprehensive IDE support including:
 //! - Real-time diagnostics and error reporting
 //! - Code completion and IntelliSense
@@ -9,7 +9,7 @@
 //! - Workspace symbol search
 //! - Document formatting and refactoring
 
-use prism::lsp::{LspServer, CompletionProvider, Position};
+use bract::lsp::{LspServer, CompletionProvider, Position};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use serde::{Deserialize, Serialize};
@@ -38,7 +38,7 @@ pub struct LspError {
 }
 
 /// LSP server instance
-pub struct PrismLspServer {
+pub struct BractLspServer {
     /// Core LSP functionality
     core: Arc<LspServer>,
     /// Completion provider
@@ -49,8 +49,8 @@ pub struct PrismLspServer {
     active_requests: Arc<Mutex<HashMap<String, tokio::sync::oneshot::Sender<Message>>>>,
 }
 
-impl PrismLspServer {
-    /// Create a new Prism LSP server
+impl BractLspServer {
+    /// Create a new Bract LSP server
     pub fn new() -> Self {
         Self {
             core: Arc::new(LspServer::new()),
@@ -159,7 +159,7 @@ impl PrismLspServer {
                 // Client finished initialization
                 self.send_notification("window/logMessage", json!({
                     "type": 3, // Info
-                    "message": "Prism Language Server initialized successfully"
+                    "message": "Bract Language Server initialized successfully"
                 }), output).await?;
             },
             Some("shutdown") => {
@@ -222,7 +222,7 @@ impl PrismLspServer {
         let response = json!({
             "capabilities": capabilities,
             "serverInfo": {
-                "name": "Prism Language Server",
+                "name": "Bract Language Server",
                 "version": "0.1.0"
             }
         });
@@ -321,11 +321,11 @@ impl PrismLspServer {
                         .ok_or("Document not found")?;
                     
                     // Create completion context
-                    let context = prism::lsp::completion::create_completion_context(
+                    let context = bract::lsp::completion::create_completion_context(
                         uri.to_string(),
                         pos.clone(),
                         &document,
-                    ).unwrap_or_else(|_| prism::lsp::completion::CompletionContext {
+                    ).unwrap_or_else(|_| bract::lsp::completion::CompletionContext {
                         uri: uri.to_string(),
                         position: pos.clone(),
                         line_content: String::new(),
@@ -495,7 +495,7 @@ impl PrismLspServer {
     }
 }
 
-impl Clone for PrismLspServer {
+impl Clone for BractLspServer {
     fn clone(&self) -> Self {
         Self {
             core: self.core.clone(),
@@ -512,7 +512,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
 
     // Create and start LSP server
-    let server = PrismLspServer::new();
+    let server = BractLspServer::new();
     server.start().await?;
 
     Ok(())
@@ -526,13 +526,13 @@ mod tests {
 
     #[test]
     fn test_server_creation() {
-        let server = PrismLspServer::new();
+        let server = BractLspServer::new();
         assert!(server.core.capabilities().text_document_sync.open_close);
     }
 
     #[tokio::test]
     async fn test_message_handling() {
-        let server = PrismLspServer::new();
+        let server = BractLspServer::new();
         
         // Test initialize message
         let message = Message {

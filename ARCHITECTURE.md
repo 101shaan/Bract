@@ -1,8 +1,8 @@
-# Prism Compiler Architecture
+# Bract Compiler Architecture
 
 > **Version:** 0.1 - Initial Design
 >
-> This document outlines the architecture of the Prism compiler, with a focus on achieving blazingly fast compilation speeds while maintaining memory safety and generating efficient code.
+> This document outlines the architecture of the Bract compiler, with a focus on achieving blazingly fast compilation speeds while maintaining memory safety and generating efficient code.
 
 ## Table of Contents
 
@@ -23,7 +23,7 @@
 
 ## 1. Overview
 
-The Prism compiler (`prismc`) is designed with the following primary goals:
+The Bract compiler (`Bractc`) is designed with the following primary goals:
 
 - **Speed**: Achieve sub-second compilation times for most projects
 - **Safety**: Enforce memory safety without garbage collection
@@ -421,7 +421,7 @@ struct Suggestion {
 
 ### 7.1 Initial Backend: C Transpilation
 
-The first code generation backend will transpile Prism to C:
+The first code generation backend will transpile Bract to C:
 
 - **Advantages**:
   - Faster initial implementation
@@ -430,7 +430,7 @@ The first code generation backend will transpile Prism to C:
 
 - **Implementation**:
   - Generate human-readable C code
-  - Map Prism constructs to equivalent C patterns
+  - Map Bract constructs to equivalent C patterns
   - Use macros and inline functions for language features
 
 ### 7.2 Final Backend: LLVM IR
@@ -495,7 +495,7 @@ The long-term backend will generate LLVM IR:
 ### 8.2 LLVM-Level Optimizations
 
 - Leverage existing LLVM passes
-- Custom passes for Prism-specific patterns
+- Custom passes for Bract-specific patterns
 - Optimization level selection
 
 ### 8.3 Whole-Program Optimization
@@ -570,7 +570,7 @@ Target Code Generation
 ### 10.2 Caching Strategy
 
 - **On-disk cache**:
-  - Store compiled artifacts in `.prism/cache`
+  - Store compiled artifacts in `.Bract/cache`
   - Index by content hash
   - Versioned by compiler revision
 
@@ -647,7 +647,7 @@ src/
 │   ├── compiler.rs         # Main compiler driver
 │   ├── options.rs          # Command-line options
 │   ├── session.rs          # Compilation session
-│   ├── project.rs          # Prism.toml handling
+│   ├── project.rs          # Bract.toml handling
 │   └── packages.rs         # Package manager integration
 ├── frontend/               # Front-end processing
 │   ├── mod.rs
@@ -716,7 +716,7 @@ src/
 ### 12.5 Build System Integration
 
 - **Project manifest parsing**:
-  - `Prism.toml` configuration and metadata
+  - `Bract.toml` configuration and metadata
   - Dependency specification and resolution
   - Build customization options
 
@@ -794,4 +794,4 @@ src/
 
 ---
 
-This architecture document serves as a blueprint for implementing the Prism compiler. It prioritizes compilation speed while maintaining the language's safety guarantees and code quality. The design allows for incremental development, starting with a simpler C backend and evolving toward a full LLVM-based compiler with advanced optimization capabilities. 
+This architecture document serves as a blueprint for implementing the Bract compiler. It prioritizes compilation speed while maintaining the language's safety guarantees and code quality. The design allows for incremental development, starting with a simpler C backend and evolving toward a full LLVM-based compiler with advanced optimization capabilities. 

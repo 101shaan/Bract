@@ -1,4 +1,4 @@
-//! Pattern parsing for Prism programming language
+//! Pattern parsing for Bract programming language
 //!
 //! This module handles parsing of all pattern types according to EBNF grammar:
 //! - Wildcard patterns (_)

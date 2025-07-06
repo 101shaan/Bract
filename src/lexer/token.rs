@@ -1,7 +1,7 @@
 use std::fmt;
 use crate::lexer::position::Position;
 
-/// Token type for the Prism language
+/// Token type for the Bract language
 #[derive(Debug, Clone, PartialEq)]
 pub enum TokenType {
     // End of file
@@ -133,7 +133,7 @@ pub enum NumberBase {
     Binary,
 }
 
-/// A token in the Prism language
+/// A token in the Bract language
 #[derive(Debug, Clone, PartialEq)]
 pub struct Token {
     /// The type of token

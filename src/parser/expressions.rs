@@ -1,4 +1,4 @@
-//! Expression parsing with operator precedence for Prism
+//! Expression parsing with operator precedence for Bract
 
 use crate::lexer::TokenType;
 use crate::ast::{Expr, Span, BinaryOp, UnaryOp, Literal};

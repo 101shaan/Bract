@@ -1,9 +1,9 @@
-//! Prism Compiler CLI Driver
+//! Bract Compiler CLI Driver
 //!
-//! This is a complete demonstration of the Prism compiler pipeline:
+//! This is a complete demonstration of the Bract compiler pipeline:
 //! Source Code → Lexing → Parsing → Semantic Analysis → Code Generation → C Compilation
 
-use prism::{
+use bract::{
     Parser,
     semantic::SemanticAnalyzer,
     codegen::{
@@ -20,7 +20,7 @@ use std::time::Instant;
 /// Command line arguments
 #[derive(Debug)]
 struct Args {
-    /// Input Prism file
+    /// Input Bract file
     input_file: PathBuf,
     /// Output directory
     output_dir: PathBuf,
@@ -41,7 +41,7 @@ impl Args {
         let args: Vec<String> = env::args().collect();
         
         if args.len() < 2 {
-            return Err("Usage: prism_compile <input.prism> [options]".to_string());
+            return Err("Usage: Bract_compile <input.Bract> [options]".to_string());
         }
         
         let mut parsed = Args {
@@ -120,17 +120,17 @@ fn main() {
         }
     };
     
-    if let Err(e) = compile_prism_file(&args) {
+    if let Err(e) = compile_bract_file(&args) {
         eprintln!("Compilation failed: {}", e);
         process::exit(1);
     }
 }
 
 fn print_usage() {
-    println!("Prism Compiler - Phase 5 Code Generation Demo");
+    println!("Bract Compiler - Phase 5 Code Generation Demo");
     println!();
     println!("USAGE:");
-    println!("    prism_compile <input.prism> [OPTIONS]");
+    println!("    Bract_compile <input.Bract> [OPTIONS]");
     println!();
     println!("OPTIONS:");
     println!("    -o, --output <DIR>     Output directory [default: target]");
@@ -144,16 +144,16 @@ fn print_usage() {
     println!("    --msvc                 Use MSVC compiler");
     println!();
     println!("EXAMPLES:");
-    println!("    prism_compile hello.prism");
-    println!("    prism_compile hello.prism -O 2 --clang");
-    println!("    prism_compile hello.prism --c-only -v");
+    println!("    Bract_compile hello.Bract");
+    println!("    Bract_compile hello.Bract -O 2 --clang");
+    println!("    Bract_compile hello.Bract --c-only -v");
 }
 
-fn compile_prism_file(args: &Args) -> Result<(), Box<dyn std::error::Error>> {
+fn compile_bract_file(args: &Args) -> Result<(), Box<dyn std::error::Error>> {
     let start_time = Instant::now();
     
     if args.verbose {
-        println!("🚀 Prism Compiler - Phase 5 Code Generation");
+        println!("🚀 Bract Compiler - Phase 5 Code Generation");
         println!("Input file: {}", args.input_file.display());
         println!("Output directory: {}", args.output_dir.display());
         println!();
@@ -255,7 +255,7 @@ fn compile_prism_file(args: &Args) -> Result<(), Box<dyn std::error::Error>> {
         println!("🏗️  Generating runtime system...");
     }
     
-    let mut runtime_gen = prism::codegen::runtime::RuntimeGenerator::new();
+    let mut runtime_gen = bract::codegen::runtime::RuntimeGenerator::new();
     runtime_gen.write_runtime_files(&args.output_dir)
         .map_err(|e| format!("Failed to generate runtime: {}", e))?;
     
@@ -297,7 +297,7 @@ fn compile_prism_file(args: &Args) -> Result<(), Box<dyn std::error::Error>> {
         // Compile to executable
         let source_files = vec![
             impl_path,
-            args.output_dir.join("prism_runtime.c"),
+            args.output_dir.join("Bract_runtime.c"),
         ];
         
         let executable_name = if cfg!(windows) {
@@ -340,12 +340,12 @@ fn compile_prism_file(args: &Args) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-// Example Prism program for testing
-const _EXAMPLE_PRISM_CODE: &str = r#"
-// Example Prism program demonstrating the compiler
+// Example Bract program for testing
+const _EXAMPLE_BRACT_CODE: &str = r#"
+// Example Bract program demonstrating the compiler
 
 fn main() -> i32 {
-    let message = "Hello, Prism!";
+    let message = "Hello, Bract!";
     print_string(message);
     
     let x = 42;
@@ -378,29 +378,29 @@ mod tests {
     #[test]
     fn test_args_parsing() {
         // Test basic parsing
-        env::set_var("0", "prism_compile");
-        env::set_var("1", "test.prism");
+        env::set_var("0", "Bract_compile");
+        env::set_var("1", "test.Bract");
         
         // This test would need more work to be fully functional
         // as env::args() gets the actual program arguments
     }
     
     #[test]
-    fn test_example_prism_code() {
+    fn test_example_bract_code() {
         // Test that our example code is valid
-        assert!(!_EXAMPLE_PRISM_CODE.is_empty());
-        assert!(_EXAMPLE_PRISM_CODE.contains("fn main()"));
-        assert!(_EXAMPLE_PRISM_CODE.contains("return"));
+        assert!(!_EXAMPLE_BRACT_CODE.is_empty());
+        assert!(_EXAMPLE_BRACT_CODE.contains("fn main()"));
+        assert!(_EXAMPLE_BRACT_CODE.contains("return"));
     }
     
     #[test]
     fn test_file_operations() {
         let temp_dir = TempDir::new().unwrap();
-        let test_file = temp_dir.path().join("test.prism");
+        let test_file = temp_dir.path().join("test.Bract");
         
         // Write test file
         let mut file = File::create(&test_file).unwrap();
-        writeln!(file, "{}", _EXAMPLE_PRISM_CODE).unwrap();
+        writeln!(file, "{}", _EXAMPLE_BRACT_CODE).unwrap();
         
         // Read it back
         let content = fs::read_to_string(&test_file).unwrap();

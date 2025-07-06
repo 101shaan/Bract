@@ -1,4 +1,4 @@
-//! Symbol Table and Scope Management for Prism Semantic Analysis
+//! Symbol Table and Scope Management for Bract Semantic Analysis
 //!
 //! This module implements the core symbol table infrastructure required for
 //! name resolution, scope management, and symbol tracking throughout the

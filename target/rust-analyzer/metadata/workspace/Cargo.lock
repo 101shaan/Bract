@@ -82,6 +82,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1b8e56985ec62d17e9c1001dc89c88ecd7dc08e47eba5ec7c29c7b5eeecde967"
 
 [[package]]
+name = "bract"
+version = "0.1.0"
+dependencies = [
+ "byteorder",
+ "env_logger",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tower-lsp",
+]
+
+[[package]]
 name = "byteorder"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -571,19 +584,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e5a7c30837279ca13e7c867e9e40053bc68740f988cb07f7ca6df43cc734b585"
 dependencies = [
  "zerovec",
-]
-
-[[package]]
-name = "prism"
-version = "0.1.0"
-dependencies = [
- "byteorder",
- "env_logger",
- "serde",
- "serde_json",
- "tempfile",
- "tokio",
- "tower-lsp",
 ]
 
 [[package]]

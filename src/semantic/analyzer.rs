@@ -1,4 +1,4 @@
-//! Main Semantic Analyzer for Prism
+//! Main Semantic Analyzer for Bract
 //!
 //! This module coordinates the complete semantic analysis pipeline including:
 //! - Symbol table construction

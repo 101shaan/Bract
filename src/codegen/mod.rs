@@ -1,6 +1,6 @@
-//! Code Generation Module for Prism
+//! Code Generation Module for Bract
 //!
-//! This module handles the translation of Prism AST to various target languages.
+//! This module handles the translation of Bract AST to various target languages.
 //! Initially targeting C for rapid development and bootstrapping.
 //!
 //! Architecture:
@@ -76,7 +76,7 @@ pub struct CodegenContext {
     pub scope_depth: usize,
     /// Generated symbol names (for name mangling)
     pub symbol_names: HashMap<SymbolId, String>,
-    /// Type mappings (Prism type -> target type)
+    /// Type mappings (Bract type -> target type)
     pub type_mappings: HashMap<String, String>,
     /// Current function context (for returns, etc.)
     pub current_function: Option<String>,
@@ -120,7 +120,7 @@ impl CodegenContext {
         ctx
     }
     
-    /// Initialize type mappings from Prism to C
+    /// Initialize type mappings from Bract to C
     fn init_type_mappings(&mut self) {
         // Integer types
         self.type_mappings.insert("i8".to_string(), "int8_t".to_string());
@@ -144,7 +144,7 @@ impl CodegenContext {
         // Other primitives
         self.type_mappings.insert("bool".to_string(), "bool".to_string());
         self.type_mappings.insert("char".to_string(), "char32_t".to_string()); // UTF-32
-        self.type_mappings.insert("str".to_string(), "prism_str_t".to_string());
+        self.type_mappings.insert("str".to_string(), "Bract_str_t".to_string());
         self.type_mappings.insert("()".to_string(), "void".to_string());
     }
     
@@ -156,7 +156,7 @@ impl CodegenContext {
         self.includes.push("#include <stdio.h>".to_string());
         self.includes.push("#include <stdlib.h>".to_string());
         self.includes.push("#include <string.h>".to_string());
-        self.includes.push("#include \"prism_runtime.h\"".to_string());
+        self.includes.push("#include \"Bract_runtime.h\"".to_string());
     }
     
     /// Generate a mangled symbol name
@@ -165,7 +165,7 @@ impl CodegenContext {
             return existing.clone();
         }
         
-        let mangled = format!("prism_{}_{}", base_name, symbol_id);
+        let mangled = format!("Bract_{}_{}", base_name, symbol_id);
         self.symbol_names.insert(symbol_id, mangled.clone());
         mangled
     }
@@ -210,13 +210,13 @@ impl CodegenContext {
         self.loop_contexts.last()
     }
     
-    /// Map Prism type to C type
-    pub fn map_type(&self, prism_type: &str) -> String {
-        self.type_mappings.get(prism_type)
+    /// Map Bract type to C type
+    pub fn map_type(&self, bract_type: &str) -> String {
+        self.type_mappings.get(bract_type)
             .cloned()
             .unwrap_or_else(|| {
                 // Default mapping for user-defined types
-                format!("struct {}", prism_type)
+                format!("struct {}", bract_type)
             })
     }
 }
@@ -384,7 +384,7 @@ pub fn format_c_identifier(name: &str) -> String {
     ];
     
     if C_KEYWORDS.contains(&name) {
-        format!("prism_{}", name)
+        format!("Bract_{}", name)
     } else {
         name.to_string()
     }
@@ -451,7 +451,7 @@ mod tests {
         let mut ctx = CodegenContext::new(symbol_table);
         
         let mangled = ctx.mangle_symbol(42, "test_func");
-        assert_eq!(mangled, "prism_test_func_42");
+        assert_eq!(mangled, "Bract_test_func_42");
         
         // Should return same name for same symbol
         let mangled2 = ctx.mangle_symbol(42, "test_func");
@@ -499,8 +499,8 @@ mod tests {
     #[test]
     fn test_c_identifier_formatting() {
         assert_eq!(format_c_identifier("test"), "test");
-        assert_eq!(format_c_identifier("int"), "prism_int");
-        assert_eq!(format_c_identifier("return"), "prism_return");
+        assert_eq!(format_c_identifier("int"), "Bract_int");
+        assert_eq!(format_c_identifier("return"), "Bract_return");
         assert_eq!(format_c_identifier("my_function"), "my_function");
     }
     

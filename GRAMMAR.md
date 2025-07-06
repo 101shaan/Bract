@@ -1,8 +1,8 @@
-# Prism Formal Grammar (EBNF)
+# Bract Formal Grammar (EBNF)
 
-> **Version:** aligned with Prism Language Specification v0.1 (Early Draft)
+> **Version:** aligned with Bract Language Specification v0.1 (Early Draft)
 >
-> This document contains the normative grammar for the Prism programming language. It is intentionally structured for efficient **recursive-descent / LL(*)** parsing and is free of left-recursion. Operator precedence and associativity are expressed through a layered expression grammar.
+> This document contains the normative grammar for the Bract programming language. It is intentionally structured for efficient **recursive-descent / LL(*)** parsing and is free of left-recursion. Operator precedence and associativity are expressed through a layered expression grammar.
 >
 > • All non-terminals start with an uppercase letter.
 > • *italic* names denote lexical tokens (terminals) that the lexer emits.
