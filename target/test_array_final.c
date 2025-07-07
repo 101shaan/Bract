@@ -2,6 +2,8 @@
 // https://github.com/bract-lang/bract
 
 void id_0(void) {
+    int32_t Bract_symbol_1[5] = { 1, 2, 3, 4, 5 };
+    double Bract_symbol_2[3] = { 1.0, 2.5, 3.14 };
     int32_t Bract_symbol_3 = id_1[0];
     int32_t Bract_symbol_4 = id_2[1];
     int32_t Bract_symbol_5 = (id_1[0] + id_1[1]);

@@ -470,33 +470,6 @@ impl<'a> Parser<'a> {
                         }
                     }
                     
-                    TokenType::LeftBracket => {
-                        // Parse array literal: [expr1, expr2, ...]
-                        self.advance()?; // consume '['
-                        let mut elements = Vec::new();
-                        
-                        while !self.check(&TokenType::RightBracket) && !self.is_at_end() {
-                            elements.push(self.parse_expression()?);
-                            
-                            if !self.match_token(&TokenType::Comma) {
-                                break;
-                            }
-                            
-                            // Allow trailing comma
-                            if self.check(&TokenType::RightBracket) {
-                                break;
-                            }
-                        }
-                        
-                        let end_token = self.expect(TokenType::RightBracket, "array literal")?;
-                        let span = Span::new(expr.span().start, end_token.position);
-                        
-                        expr = Expr::Array {
-                            elements,
-                            span,
-                        };
-                    }
-                    
                     _ => break, // No more postfix operators
                 }
             } else {
@@ -633,6 +606,32 @@ impl<'a> Parser<'a> {
                     Ok(Expr::Block {
                         statements,
                         trailing_expr,
+                        span,
+                    })
+                }
+                TokenType::LeftBracket => {
+                    // Parse array literal: [expr1, expr2, ...]
+                    self.advance()?; // consume '['
+                    let mut elements = Vec::new();
+                    
+                    while !self.check(&TokenType::RightBracket) && !self.is_at_end() {
+                        elements.push(self.parse_expression()?);
+                        
+                        if !self.match_token(&TokenType::Comma) {
+                            break;
+                        }
+                        
+                        // Allow trailing comma
+                        if self.check(&TokenType::RightBracket) {
+                            break;
+                        }
+                    }
+                    
+                    let end_token = self.expect(TokenType::RightBracket, "array literal")?;
+                    let span = Span::new(start_pos, end_token.position);
+                    
+                    Ok(Expr::Array {
+                        elements,
                         span,
                     })
                 }

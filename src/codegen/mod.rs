@@ -20,6 +20,7 @@ pub mod statements;
 pub mod items;
 pub mod runtime;
 pub mod build;
+pub mod cranelift;  // NEW: Native code generation
 
 pub use c_gen::CCodeGenerator;
 

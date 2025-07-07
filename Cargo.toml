@@ -12,6 +12,15 @@ tower-lsp = "0.20"
 env_logger = "0.10"
 byteorder = "1.5"
 
+# Cranelift Native Code Generation
+cranelift = "0.105"
+cranelift-codegen = "0.105"
+cranelift-frontend = "0.105"
+cranelift-module = "0.105"
+cranelift-object = "0.105"
+cranelift-jit = "0.105"
+target-lexicon = "0.12"
+
 [[bin]]
 name = "bract_compile_simple"
 path = "src/bin/bract_compile_simple.rs"
@@ -31,3 +40,7 @@ path = "src/bin/bract_lsp.rs"
 [[bin]]
 name = "bract_native"
 path = "src/bin/bract_native.rs"
+
+[[bin]]
+name = "bract_cranelift"
+path = "src/bin/bract_cranelift.rs"
