@@ -5,7 +5,7 @@
 
 use crate::ast::{Item, Stmt, Expr, Type as AstType, Parameter, Pattern};
 use super::{CodegenResult, CodegenError, utils, expressions};
-use cranelift::prelude::{types as ctypes, Type, Value, InstBuilder, AbiParam};
+use cranelift::prelude::{types as ctypes, Type, Value, InstBuilder, AbiParam, Signature};
 use cranelift_codegen::ir::StackSlot;
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext};
 use cranelift_module::{Module as CraneliftModule, Linkage};
@@ -120,8 +120,15 @@ fn compile_function_with_body(
         sig.returns.push(AbiParam::new(ret_type));
     }
     
-    // Get function name as string - for now just use "main" as placeholder
-    let func_name = "main"; // TODO: properly convert InternedString to &str
+    // Get function name as string - use ID for now since we don't have access to interner
+    let func_name_string;
+    let func_name = if params.is_empty() && return_type.is_some() {
+        "main" // Assume main function for functions with no params and return type
+    } else {
+        // Use function ID as fallback for other functions
+        func_name_string = format!("fn_{}", _name.id);
+        &func_name_string
+    };
     
     // Declare function
     let linkage = if func_name == "main" {
@@ -142,6 +149,15 @@ fn compile_function_with_body(
     
     // Create entry block
     let entry_block = builder.create_block();
+    
+    // Add block parameters to match function signature
+    for param in params {
+        if let Some(param_type) = &param.type_annotation {
+            let cranelift_type = ast_type_to_cranelift_type(param_type)?;
+            builder.append_block_param(entry_block, cranelift_type);
+        }
+    }
+    
     builder.switch_to_block(entry_block);
     builder.seal_block(entry_block);
     
@@ -149,7 +165,25 @@ fn compile_function_with_body(
     let mut var_context = VariableContext::new();
     
     // Add function parameters as local variables
-    // TODO: Implement parameter handling when we add function parameters
+    let block_params: Vec<_> = builder.block_params(entry_block).to_vec();
+    for (i, param) in params.iter().enumerate() {
+        if let Pattern::Identifier { name, .. } = &param.pattern {
+            let param_type = param.type_annotation.as_ref()
+                .ok_or_else(|| CodegenError::InternalError("Parameter missing type annotation".to_string()))?;
+            let cranelift_type = ast_type_to_cranelift_type(param_type)?;
+            
+            // Create stack slot for parameter
+            let stack_slot = var_context.declare_variable(
+                &mut builder,
+                name.id,
+                cranelift_type,
+                format!("param_{}", i),
+            )?;
+            
+            // Store the parameter value to the stack slot
+            builder.ins().stack_store(block_params[i], stack_slot, 0);
+        }
+    }
     
     // Compile function body
     let result_value = compile_expression_with_variables(&mut builder, body, &mut var_context)?;
@@ -203,6 +237,12 @@ fn compile_expression_with_variables(
                 BinaryOp::Multiply => Ok(builder.ins().imul(left_val, right_val)),
                 BinaryOp::Divide => Ok(builder.ins().sdiv(left_val, right_val)),
                 BinaryOp::Modulo => Ok(builder.ins().srem(left_val, right_val)),
+                BinaryOp::Equal => Ok(builder.ins().icmp(cranelift::prelude::IntCC::Equal, left_val, right_val)),
+                BinaryOp::NotEqual => Ok(builder.ins().icmp(cranelift::prelude::IntCC::NotEqual, left_val, right_val)),
+                BinaryOp::Less => Ok(builder.ins().icmp(cranelift::prelude::IntCC::SignedLessThan, left_val, right_val)),
+                BinaryOp::LessEqual => Ok(builder.ins().icmp(cranelift::prelude::IntCC::SignedLessThanOrEqual, left_val, right_val)),
+                BinaryOp::Greater => Ok(builder.ins().icmp(cranelift::prelude::IntCC::SignedGreaterThan, left_val, right_val)),
+                BinaryOp::GreaterEqual => Ok(builder.ins().icmp(cranelift::prelude::IntCC::SignedGreaterThanOrEqual, left_val, right_val)),
                 _ => Err(CodegenError::UnsupportedFeature(
                     format!("Binary operator not supported: {:?}", op)
                 )),
@@ -236,6 +276,35 @@ fn compile_expression_with_variables(
         Expr::Parenthesized { expr, .. } => {
             // Parentheses are just for grouping - compile the inner expression
             compile_expression_with_variables(builder, expr, var_context)
+        }
+        Expr::Call { callee, args, .. } => {
+            // Handle function calls
+            compile_function_call_with_variables(builder, callee, args, var_context)
+        }
+        Expr::If { condition, then_block, else_block, .. } => {
+            // Handle if expressions
+            compile_if_expression_with_variables(builder, condition, then_block, else_block, var_context)
+        }
+        Expr::Unary { op, expr, .. } => {
+            // Handle unary operations
+            let operand_val = compile_expression_with_variables(builder, expr, var_context)?;
+            
+            use crate::ast::UnaryOp;
+            match op {
+                UnaryOp::Negate => {
+                    // Negate: 0 - operand
+                    let zero = builder.ins().iconst(ctypes::I32, 0);
+                    Ok(builder.ins().isub(zero, operand_val))
+                }
+                UnaryOp::Not => {
+                    // Logical not: operand == 0
+                    let zero = builder.ins().iconst(ctypes::I32, 0);
+                    Ok(builder.ins().icmp(cranelift::prelude::IntCC::Equal, operand_val, zero))
+                }
+                _ => Err(CodegenError::UnsupportedFeature(
+                    format!("Unary operator not supported: {:?}", op)
+                )),
+            }
         }
         _ => {
             // Use the expressions module for other expression types
@@ -416,6 +485,110 @@ fn ast_type_to_cranelift_type(ast_type: &AstType) -> CodegenResult<Type> {
             format!("Type not yet supported: {:?}", ast_type)
         )),
     }
+}
+
+/// Compile a function call with variable context
+fn compile_function_call_with_variables(
+    builder: &mut FunctionBuilder,
+    callee: &Expr,
+    args: &[Expr],
+    var_context: &mut VariableContext,
+) -> CodegenResult<Value> {
+    // For now, only handle simple identifier function calls
+    if let Expr::Identifier { name, .. } = callee {
+        // Create function signature for the call
+        let mut sig = Signature::new(cranelift_codegen::isa::CallConv::SystemV);
+        
+        // Add parameters (assume all i32 for now)
+        for _ in args {
+            sig.params.push(AbiParam::new(ctypes::I32));
+        }
+        
+        // Add return type (assume i32)
+        sig.returns.push(AbiParam::new(ctypes::I32));
+        
+        // Import the signature
+        let sig_ref = builder.func.import_signature(sig);
+        
+        // Create external function reference
+        let func_ref = builder.import_function(cranelift_codegen::ir::ExtFuncData {
+            name: cranelift_codegen::ir::ExternalName::testcase(&format!("fn_{}", name.id)),
+            signature: sig_ref,
+            colocated: true,
+        });
+        
+        // Compile arguments
+        let mut arg_values = Vec::new();
+        for arg in args {
+            let arg_value = compile_expression_with_variables(builder, arg, var_context)?;
+            arg_values.push(arg_value);
+        }
+        
+        // Generate the call
+        let call_inst = builder.ins().call(func_ref, &arg_values);
+        let results = builder.inst_results(call_inst);
+        
+        if results.is_empty() {
+            // No return value, return unit (0)
+            Ok(builder.ins().iconst(ctypes::I32, 0))
+        } else {
+            // Return the first result
+            Ok(results[0])
+        }
+    } else {
+        Err(CodegenError::UnsupportedFeature(
+            "Only simple identifier function calls are supported".to_string()
+        ))
+    }
+}
+
+/// Compile an if expression with variable context
+fn compile_if_expression_with_variables(
+    builder: &mut FunctionBuilder,
+    condition: &Expr,
+    then_block: &Expr,
+    else_block: &Option<Box<Expr>>,
+    var_context: &mut VariableContext,
+) -> CodegenResult<Value> {
+    // Compile the condition
+    let condition_val = compile_expression_with_variables(builder, condition, var_context)?;
+    
+    // Create blocks for then, else, and merge
+    let then_bb = builder.create_block();
+    let else_bb = builder.create_block();
+    let merge_bb = builder.create_block();
+    
+    // Add a parameter to the merge block for the result value
+    let merge_param = builder.append_block_param(merge_bb, ctypes::I32);
+    
+    // Branch based on condition (non-zero means true)
+    let zero = builder.ins().iconst(ctypes::I32, 0);
+    let is_true = builder.ins().icmp(cranelift::prelude::IntCC::NotEqual, condition_val, zero);
+    builder.ins().brif(is_true, then_bb, &[], else_bb, &[]);
+    
+    // Compile then block
+    builder.switch_to_block(then_bb);
+    let then_val = compile_expression_with_variables(builder, then_block, var_context)?;
+    builder.ins().jump(merge_bb, &[then_val]);
+    
+    // Compile else block
+    builder.switch_to_block(else_bb);
+    let else_val = if let Some(else_expr) = else_block {
+        compile_expression_with_variables(builder, else_expr, var_context)?
+    } else {
+        // No else block, return unit (0)
+        builder.ins().iconst(ctypes::I32, 0)
+    };
+    builder.ins().jump(merge_bb, &[else_val]);
+    
+    // Switch to merge block and seal all blocks
+    builder.switch_to_block(merge_bb);
+    builder.seal_block(then_bb);
+    builder.seal_block(else_bb);
+    builder.seal_block(merge_bb);
+    
+    // Return the merged value
+    Ok(merge_param)
 }
 
 // Make the literal compilation function available for expressions.rs

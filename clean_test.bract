@@ -1,5 +1,5 @@
 fn main() -> i32 {
-    let x = 10;
-    let y = 20;
-    x + y
-}
+    let mut x = 5;
+    x = x * 2;
+    x
+} 
