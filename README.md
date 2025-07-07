@@ -3,7 +3,7 @@
 
 > A blazingly fast, memory-safe systems programming language that compiles to native machine code
 
-**Status:** Later Development
+**Status:** Early Development
 
 ## What is Bract?
 
