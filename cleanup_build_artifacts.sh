@@ -3,29 +3,29 @@
 # This script removes all build artifacts that cause GitHub to detect the repository as 75% "makefile"
 # Run this script to clean up your repository before committing
 
-echo "🧹 Bract Build Artifacts Cleanup"
+echo " Bract Build Artifacts Cleanup"
 echo "==============================================="
 echo ""
 
 # Function to safely remove directory if it exists
 remove_dir_if_exists() {
     if [ -d "$1" ]; then
-        echo "🗑️  Removing $2..."
+        echo "  Removing $2..."
         rm -rf "$1"
-        echo "   ✅ $2 removed"
+        echo "    $2 removed"
     else
-        echo "   ⚪ $2 not found (already clean)"
+        echo "    $2 not found (already clean)"
     fi
 }
 
 # Function to safely remove file if it exists
 remove_file_if_exists() {
     if [ -f "$1" ]; then
-        echo "🗑️  Removing $2..."
+        echo "  Removing $2..."
         rm -f "$1"
-        echo "   ✅ $2 removed"
+        echo "    $2 removed"
     else
-        echo "   ⚪ $2 not found (already clean)"
+        echo "    $2 not found (already clean)"
     fi
 }
 
@@ -69,16 +69,16 @@ remove_dir_if_exists "dist" "Distribution directory"
 remove_dir_if_exists "out" "Output directory"
 
 echo ""
-echo "🎉 Cleanup complete!"
+echo " Cleanup complete!"
 echo ""
-echo "📊 Repository Status:"
+echo " Repository Status:"
 echo "   • All build artifacts removed"
 echo "   • GitHub language detection will now show correct percentages"
 echo "   • Repository is clean and ready for commit"
 echo ""
-echo "🚀 Next Steps:"
+echo " Next Steps:"
 echo "   1. git add -A"
 echo "   2. git commit -m 'Clean up build artifacts'"
 echo "   3. git push"
 echo ""
-echo "💡 Pro Tip: Run this script regularly to keep your repository clean!" 
+echo " Pro Tip: Run this script regularly to keep your repository clean!" 

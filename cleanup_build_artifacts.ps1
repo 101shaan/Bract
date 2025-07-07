@@ -3,7 +3,7 @@
 # This script removes all build artifacts that cause GitHub to detect the repository as 75% "makefile"
 # Run this script to clean up your repository before committing
 
-Write-Host "🧹 Bract Build Artifacts Cleanup" -ForegroundColor Green
+Write-Host " Bract Build Artifacts Cleanup" -ForegroundColor Green
 Write-Host "===============================================" -ForegroundColor Green
 Write-Host ""
 
@@ -11,11 +11,11 @@ Write-Host ""
 function Remove-IfExists {
     param($Path, $Description)
     if (Test-Path $Path) {
-        Write-Host "🗑️  Removing $Description..." -ForegroundColor Yellow
+        Write-Host "  Removing $Description..." -ForegroundColor Yellow
         Remove-Item $Path -Recurse -Force
-        Write-Host "   ✅ $Description removed" -ForegroundColor Green
+        Write-Host "    $Description removed" -ForegroundColor Green
     } else {
-        Write-Host "   ⚪ $Description not found (already clean)" -ForegroundColor Gray
+        Write-Host "   $Description not found (already clean)" -ForegroundColor Gray
     }
 }
 
@@ -23,15 +23,15 @@ function Remove-IfExists {
 function Remove-FileIfExists {
     param($Path, $Description)
     if (Test-Path $Path) {
-        Write-Host "🗑️  Removing $Description..." -ForegroundColor Yellow
+        Write-Host "  Removing $Description..." -ForegroundColor Yellow
         Remove-Item $Path -Force
-        Write-Host "   ✅ $Description removed" -ForegroundColor Green
+        Write-Host "    $Description removed" -ForegroundColor Green
     } else {
-        Write-Host "   ⚪ $Description not found (already clean)" -ForegroundColor Gray
+        Write-Host "    $Description not found (already clean)" -ForegroundColor Gray
     }
 }
 
-Write-Host "🎯 Starting cleanup process..." -ForegroundColor Cyan
+Write-Host " Starting cleanup process..." -ForegroundColor Cyan
 Write-Host ""
 
 # Remove target directory (Cargo build artifacts)
@@ -69,16 +69,16 @@ Remove-IfExists "dist" "Distribution directory"
 Remove-IfExists "out" "Output directory"
 
 Write-Host ""
-Write-Host "🎉 Cleanup complete!" -ForegroundColor Green
+Write-Host " Cleanup complete!" -ForegroundColor Green
 Write-Host ""
-Write-Host "📊 Repository Status:" -ForegroundColor Cyan
+Write-Host " Repository Status:" -ForegroundColor Cyan
 Write-Host "   • All build artifacts removed" -ForegroundColor Green
 Write-Host "   • GitHub language detection will now show correct percentages" -ForegroundColor Green
 Write-Host "   • Repository is clean and ready for commit" -ForegroundColor Green
 Write-Host ""
-Write-Host "🚀 Next Steps:" -ForegroundColor Cyan
+Write-Host " Next Steps:" -ForegroundColor Cyan
 Write-Host "   1. git add -A" -ForegroundColor White
 Write-Host "   2. git commit -m 'Clean up build artifacts'" -ForegroundColor White
 Write-Host "   3. git push" -ForegroundColor White
 Write-Host ""
-Write-Host "💡 Pro Tip: Run this script regularly to keep your repository clean!" -ForegroundColor Yellow 
+Write-Host " Pro Tip: Run this script regularly to keep your repository clean!" -ForegroundColor Yellow 
