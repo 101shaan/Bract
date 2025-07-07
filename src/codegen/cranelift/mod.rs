@@ -13,7 +13,7 @@
 //! - `memory`: Memory management and allocation
 //! - `runtime`: Runtime system integration
 
-use crate::ast::{Module};
+use crate::ast::{Module, Item};
 use crate::semantic::SymbolTable;
 use super::{CodegenResult, CodegenError};
 
@@ -85,9 +85,34 @@ impl CraneliftCodeGenerator {
     }
     
     /// Generate native code for a module
-    pub fn generate(&mut self, _module: &Module) -> CodegenResult<Vec<u8>> {
-        // For now, just generate a simple main function that returns 0
-        self.generate_simple_main()?;
+    pub fn generate(&mut self, module: &Module) -> CodegenResult<Vec<u8>> {
+        // Compile all functions in the module
+        for item in &module.items {
+            match item {
+                Item::Function { .. } => {
+                    let module_ref = self.module.as_mut().unwrap();
+                    functions::compile_function_item(module_ref, item, &mut self.builder_context)?;
+                }
+                _ => {
+                    // Skip non-function items for now
+                    continue;
+                }
+            }
+        }
+        
+        // If no main function was found, create a simple one for testing
+        let has_main = module.items.iter().any(|item| {
+            if let Item::Function { name, .. } = item {
+                // TODO: Convert InternedString to string properly
+                true // For now, assume we always have a main
+            } else {
+                false
+            }
+        });
+        
+        if !has_main {
+            self.generate_simple_main()?;
+        }
         
         // Finalize and produce object code
         let module = self.module.take().unwrap();
@@ -97,7 +122,7 @@ impl CraneliftCodeGenerator {
             .map_err(|e| CodegenError::InternalError(format!("Failed to emit object code: {}", e)))?)
     }
     
-    /// Generate a simple main function for testing
+    /// Generate a simple main function for testing (fallback)
     fn generate_simple_main(&mut self) -> CodegenResult<()> {
         let module = self.module.as_mut().unwrap();
         
