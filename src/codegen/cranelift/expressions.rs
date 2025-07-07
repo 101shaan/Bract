@@ -28,6 +28,10 @@ pub fn compile_expression(
         Expr::MethodCall { receiver, method, args, .. } => {
             compile_method_call(builder, receiver, method, args)
         }
+        Expr::Parenthesized { expr, .. } => {
+            // Parentheses are just for grouping - compile the inner expression
+            compile_expression(builder, expr)
+        }
         _ => Err(CodegenError::UnsupportedFeature(
             format!("Expression not yet supported: {:?}", expression)
         )),
