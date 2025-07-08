@@ -246,13 +246,23 @@ fn link_executable(object_path: &PathBuf, output_path: &PathBuf, verbose: bool) 
     use std::process::Command;
     
     let mut cmd = if cfg!(windows) {
-        // Use Microsoft linker on Windows
-        let mut cmd = Command::new("link");
-        cmd.arg("/ENTRY:main")
-           .arg("/SUBSYSTEM:CONSOLE")
-           .arg(format!("/OUT:{}", output_path.display()))
-           .arg(object_path);
-        cmd
+        // Try LLD (LLVM linker) first, then fall back to Microsoft linker
+        if Command::new("lld-link").arg("--version").output().is_ok() {
+            let mut cmd = Command::new("lld-link");
+            cmd.arg("/ENTRY:main")
+               .arg("/SUBSYSTEM:CONSOLE")
+               .arg(format!("/OUT:{}", output_path.display()))
+               .arg(object_path);
+            cmd
+        } else {
+            // Use Microsoft linker on Windows
+            let mut cmd = Command::new("link");
+            cmd.arg("/ENTRY:main")
+               .arg("/SUBSYSTEM:CONSOLE")
+               .arg(format!("/OUT:{}", output_path.display()))
+               .arg(object_path);
+            cmd
+        }
     } else {
         // Use system linker on Unix-like systems
         let mut cmd = Command::new("ld");

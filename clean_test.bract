@@ -1,5 +1,4 @@
 fn main() -> i32 {
-    let mut x = 5;
-    x = x * 2;
-    x
+    let arr = [1, 2, 3];
+    arr[1]
 } 

@@ -186,13 +186,15 @@ fn compile_function_with_body(
     }
     
     // Compile function body
-    let result_value = compile_expression_with_variables(&mut builder, body, &mut var_context)?;
+    let (result_value, function_terminated) = compile_expression_with_variables_and_termination(&mut builder, body, &mut var_context)?;
     
-    // Return the result
-    if return_type.is_some() {
-        builder.ins().return_(&[result_value]);
-    } else {
-        builder.ins().return_(&[]);
+    // Only add return instruction if the function didn't already terminate
+    if !function_terminated {
+        if return_type.is_some() {
+            builder.ins().return_(&[result_value]);
+        } else {
+            builder.ins().return_(&[]);
+        }
     }
     
     // Finalize function
@@ -203,6 +205,49 @@ fn compile_function_with_body(
         .map_err(|e| CodegenError::InternalError(format!("Failed to define function '{}': {}", func_name, e)))?;
     
     Ok(())
+}
+
+/// Compile an expression to a Cranelift value with variable context, returning termination status
+fn compile_expression_with_variables_and_termination(
+    builder: &mut FunctionBuilder,
+    expr: &Expr,
+    var_context: &mut VariableContext,
+) -> CodegenResult<(Value, bool)> {
+    match expr {
+        Expr::Block { statements, trailing_expr, .. } => {
+            // Pre-create a dummy value in case the block terminates early
+            let dummy_value = builder.ins().iconst(ctypes::I32, 0);
+            let mut block_terminated = false;
+            let mut result_value = dummy_value;
+            
+            // Compile all statements
+            for stmt in statements {
+                // Check if this statement might terminate the block
+                if let Stmt::Return { .. } = stmt {
+                    compile_statement_with_variables(builder, stmt, var_context)?;
+                    block_terminated = true;
+                    break; // Don't process more statements after return
+                } else {
+                    compile_statement_with_variables(builder, stmt, var_context)?;
+                }
+            }
+            
+            // Only process trailing expression if block wasn't terminated
+            if !block_terminated {
+                if let Some(trailing) = trailing_expr {
+                    result_value = compile_expression_with_variables(builder, trailing, var_context)?;
+                }
+                // If no trailing expression, keep the dummy value (represents unit)
+            }
+            
+            Ok((result_value, block_terminated))
+        }
+        _ => {
+            // For non-block expressions, just compile normally and return false for termination
+            let value = compile_expression_with_variables(builder, expr, var_context)?;
+            Ok((value, false))
+        }
+    }
 }
 
 /// Compile an expression to a Cranelift value with variable context
@@ -249,27 +294,40 @@ fn compile_expression_with_variables(
             }
         }
         Expr::Block { statements, trailing_expr, .. } => {
+            // Pre-create a dummy value in case the block terminates early
+            let dummy_value = builder.ins().iconst(ctypes::I32, 0);
+            let mut block_terminated = false;
+            let mut result_value = dummy_value;
+            
             // Compile all statements
             for stmt in statements {
-                compile_statement_with_variables(builder, stmt, var_context)?;
+                // Check if this statement might terminate the block
+                if let Stmt::Return { .. } = stmt {
+                    compile_statement_with_variables(builder, stmt, var_context)?;
+                    block_terminated = true;
+                    break; // Don't process more statements after return
+                } else {
+                    compile_statement_with_variables(builder, stmt, var_context)?;
+                }
             }
             
-            // Return trailing expression or unit
-            if let Some(trailing) = trailing_expr {
-                compile_expression_with_variables(builder, trailing, var_context)
-            } else {
-                // Return unit/void - for now return 0
-                Ok(builder.ins().iconst(ctypes::I32, 0))
+            // Only process trailing expression if block wasn't terminated
+            if !block_terminated {
+                if let Some(trailing) = trailing_expr {
+                    result_value = compile_expression_with_variables(builder, trailing, var_context)?;
+                }
+                // If no trailing expression, keep the dummy value (represents unit)
             }
+            
+            Ok(result_value)
         }
         Expr::Return { value, .. } => {
+            // Don't generate return instruction here - let the function handle it
+            // Just evaluate the value and return it
             if let Some(value_expr) = value {
-                let value = compile_expression_with_variables(builder, value_expr, var_context)?;
-                builder.ins().return_(&[value]);
-                // This is unreachable, but we need to return a value
-                Ok(builder.ins().iconst(ctypes::I32, 0))
+                compile_expression_with_variables(builder, value_expr, var_context)
             } else {
-                builder.ins().return_(&[]);
+                // Return unit/void - for now return 0
                 Ok(builder.ins().iconst(ctypes::I32, 0))
             }
         }
