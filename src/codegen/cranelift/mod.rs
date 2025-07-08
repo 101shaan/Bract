@@ -86,12 +86,20 @@ impl CraneliftCodeGenerator {
     
     /// Generate native code for a module
     pub fn generate(&mut self, module: &Module) -> CodegenResult<Vec<u8>> {
-        // Compile all functions in the module
+        // Phase 1: Declare all functions first (signatures only)
+        for item in &module.items {
+            if let Item::Function { .. } = item {
+                let module_ref = self.module.as_mut().unwrap();
+                functions::declare_function_item(module_ref, item, &mut self.context)?;
+            }
+        }
+        
+        // Phase 2: Compile all function bodies
         for item in &module.items {
             match item {
                 Item::Function { .. } => {
                     let module_ref = self.module.as_mut().unwrap();
-                    functions::compile_function_item(module_ref, item, &mut self.builder_context)?;
+                    functions::compile_function_item(module_ref, item, &mut self.builder_context, &mut self.context)?;
                 }
                 _ => {
                     // Skip non-function items for now

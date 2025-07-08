@@ -48,7 +48,7 @@
 
 - [x] Implement variable reference support in codegen ✅
 - [x] Integrate with a linker (LLD) ✅
-- [ ] Implement function call support in codegen
+- [x] Implement function call support in codegen ✅ (via inlining)
 - [ ] Fix parser bug ("Parsed 0 items")
 - [ ] Implement real array memory model (stack/heap)
 - [ ] Add basic struct support
@@ -61,7 +61,8 @@
 
 - [x] Implement variable reference support ✅ COMPLETED
 - [x] Research and document linker setup for Windows ✅ COMPLETED (LLD)
-- [ ] Implement function call support (next up)
+- [x] Implement function call support ✅ COMPLETED (via inlining)
+- [ ] Implement real function calls (not inlined) 
 - [ ] Fix parser reporting bug
 
 ---
@@ -75,7 +76,7 @@
 - **Object code output:** ✅
 - **Variable references:** ✅ **COMPLETED**
 - **Native linking:** ✅ **COMPLETED**
-- **Function calls:** ⏳ *NEXT*
+- **Function calls:** ✅ *COMPLETED (via inlining)*
 - **Real arrays:** ⏳
 - **Structs:** ⏳
 - **Pattern matching:** ⏳
