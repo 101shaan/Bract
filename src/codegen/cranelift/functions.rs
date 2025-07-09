@@ -488,8 +488,14 @@ fn compile_let_statement(
             // Determine variable type
             let var_type = if let Some(type_ann) = type_annotation {
                 ast_type_to_cranelift_type(type_ann)?
+            } else if let Some(init_expr) = initializer {
+                // Infer type from initializer
+                match init_expr {
+                    Expr::Array { .. } => ctypes::I64, // Arrays are stored as pointers
+                    _ => ctypes::I32, // Default to i32 for other types
+                }
             } else {
-                // Infer type from initializer (for now, assume i32)
+                // No type annotation or initializer - default to i32
                 ctypes::I32
             };
             
@@ -593,42 +599,82 @@ fn compile_function_call_with_variables(
     }
 }
 
-/// Compile array indexing with variable context
+/// Compile array indexing with variable context - REAL IMPLEMENTATION
 fn compile_array_index_with_variables(
     builder: &mut FunctionBuilder,
     array: &Expr,
     index: &Expr,
     var_context: &mut VariableContext,
 ) -> CodegenResult<Value> {
-    // Compile the array expression (could be a variable reference)
-    let _array_val = compile_expression_with_variables(builder, array, var_context)?;
+    // Compile the index expression
     let index_val = compile_expression_with_variables(builder, index, var_context)?;
     
-    // For now, we'll simulate array access by returning different values based on index
-    // This is a simplified implementation for our test case [1, 2, 3][index] 
-    
-    // Create constants for array elements 
-    let elem_1 = builder.ins().iconst(ctypes::I32, 1);
-    let elem_2 = builder.ins().iconst(ctypes::I32, 2);
-    let elem_3 = builder.ins().iconst(ctypes::I32, 3);
-    
-    // Check if index is 0, 1, or 2
-    let zero = builder.ins().iconst(ctypes::I32, 0);
-    let one = builder.ins().iconst(ctypes::I32, 1);
-    let two = builder.ins().iconst(ctypes::I32, 2);
-    
-    let is_zero = builder.ins().icmp(cranelift::prelude::IntCC::Equal, index_val, zero);
-    let _is_one = builder.ins().icmp(cranelift::prelude::IntCC::Equal, index_val, one);
-    let is_two = builder.ins().icmp(cranelift::prelude::IntCC::Equal, index_val, two);
-    
-    // Use select to choose the right element
-    let result_01 = builder.ins().select(is_zero, elem_1, elem_2);
-    let result = builder.ins().select(is_two, elem_3, result_01);
-    
-    Ok(result)
+    // Handle different array sources
+    match array {
+        Expr::Identifier { name, .. } => {
+            // Array is a variable - load from its stack slot
+            if let Some(var_info) = var_context.get_variable(name.id) {
+                // Load the array pointer from the variable's stack slot
+                // (arrays are stored as pointers in variables)
+                let array_ptr = builder.ins().stack_load(ctypes::I64, var_info.stack_slot, 0);
+                
+                // Calculate byte offset: index * element_size (4 bytes for i32)
+                let element_size = builder.ins().iconst(ctypes::I64, 4);
+                let index_64 = builder.ins().uextend(ctypes::I64, index_val);
+                let byte_offset = builder.ins().imul(index_64, element_size);
+                
+                // Add offset to array pointer
+                let element_addr = builder.ins().iadd(array_ptr, byte_offset);
+                
+                // Load the value from the calculated address
+                let value = builder.ins().load(ctypes::I32, cranelift::prelude::MemFlags::trusted(), element_addr, 0);
+                Ok(value)
+            } else {
+                Err(CodegenError::InternalError(
+                    format!("Array variable '{}' not found", name.id)
+                ))
+            }
+        }
+        Expr::Array { elements, .. } => {
+            // Inline array literal - we need to allocate it first, then index into it
+            // This is a simplified approach for inline arrays
+            
+            // For now, let's support only constant indices for inline arrays
+            // In a full implementation, we'd allocate the array and then use pointer arithmetic
+            
+            // Try to evaluate the index as a constant at compile time
+            if let Expr::Literal { literal: crate::ast::Literal::Integer { value, .. }, .. } = index {
+                if let Ok(index_usize) = value.parse::<usize>() {
+                    if index_usize < elements.len() {
+                        // Compile the specific element directly
+                        compile_expression_with_variables(builder, &elements[index_usize], var_context)
+                    } else {
+                        Err(CodegenError::InternalError(
+                            format!("Array index {} out of bounds for array of length {}", index_usize, elements.len())
+                        ))
+                    }
+                } else {
+                    Err(CodegenError::InternalError(
+                        format!("Invalid integer literal: {}", value)
+                    ))
+                }
+            } else {
+                // For dynamic indices on inline arrays, we need to allocate the array first
+                // This is a more complex case - for now, return an error
+                Err(CodegenError::UnsupportedFeature(
+                    "Dynamic indexing of inline array literals not yet supported. Assign the array to a variable first.".to_string()
+                ))
+            }
+        }
+        _ => {
+            Err(CodegenError::UnsupportedFeature(
+                "Complex array expressions not yet supported".to_string()
+            ))
+        }
+    }
 }
 
-/// Compile array literal with variable context
+/// Compile array literal with variable context - REAL IMPLEMENTATION  
 fn compile_array_literal_with_variables(
     builder: &mut FunctionBuilder,
     elements: &[Expr],
@@ -640,13 +686,33 @@ fn compile_array_literal_with_variables(
         ));
     }
     
-    // For now, only support small arrays and return the first element
-    // This is a simplified implementation
-    let first_element = compile_expression_with_variables(builder, &elements[0], var_context)?;
+    // Calculate total size needed: elements.len() * sizeof(i32)
+    let element_count = elements.len() as u32;
+    let element_size_bytes = 4; // i32 = 4 bytes
+    let total_size_bytes = element_count * element_size_bytes;
     
-    // For a basic implementation, we'll just return the first element
-    // TODO: Implement proper array allocation and initialization
-    Ok(first_element)
+    // Create a stack slot to hold the entire array
+    let array_slot = builder.create_sized_stack_slot(cranelift_codegen::ir::StackSlotData::new(
+        cranelift_codegen::ir::StackSlotKind::ExplicitSlot,
+        total_size_bytes,
+    ));
+    
+    // Store each element in the array
+    for (i, element_expr) in elements.iter().enumerate() {
+        // Compile the element expression
+        let element_value = compile_expression_with_variables(builder, element_expr, var_context)?;
+        
+        // Calculate offset for this element (i * 4 bytes)
+        let offset = (i as u32) * element_size_bytes;
+        
+        // Store the element at the calculated offset
+        builder.ins().stack_store(element_value, array_slot, offset as i32);
+    }
+    
+    // Return the address of the array so it can be stored in variables
+    // This allows proper array variable assignment and indexing
+    let array_addr = builder.ins().stack_addr(ctypes::I64, array_slot, 0);
+    Ok(array_addr)
 }
 
 /// Compile an if expression with variable context
