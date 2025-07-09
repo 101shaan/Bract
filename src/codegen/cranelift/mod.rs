@@ -108,19 +108,10 @@ impl CraneliftCodeGenerator {
             }
         }
         
-        // If no main function was found, create a simple one for testing
-        let has_main = module.items.iter().any(|item| {
-            if let Item::Function { name, .. } = item {
-                // TODO: Convert InternedString to string properly
-                true // For now, assume we always have a main
-            } else {
-                false
-            }
-        });
-        
-        if !has_main {
-            self.generate_simple_main()?;
-        }
+        // Check if main function exists - for now we'll skip the fallback since we have main
+        // TODO: Properly check for main function when we implement string interning lookup
+        // For now, assume user provides main function
+        let _has_main = true;
         
         // Finalize and produce object code
         let module = self.module.take().unwrap();

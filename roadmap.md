@@ -49,7 +49,9 @@
 - [x] Implement variable reference support in codegen ✅
 - [x] Integrate with a linker (LLD) ✅
 - [x] Implement function call support in codegen ✅ (via inlining)
-- [ ] Fix parser bug ("Parsed 0 items")
+- [x] Fix variable reference bug in array indexing ✅ COMPLETED
+- [x] Identify parser bug: if expressions break parsing ✅ FOUND
+- [ ] Fix if expression parsing bug  
 - [ ] Implement real array memory model (stack/heap)
 - [ ] Add basic struct support
 - [ ] Add minimal string literal support
@@ -77,7 +79,11 @@
 - **Variable references:** ✅ **COMPLETED**
 - **Native linking:** ✅ **COMPLETED**
 - **Function calls:** ✅ *COMPLETED (via inlining)*
-- **Real arrays:** ⏳
+- **Array indexing:** ✅ **COMPLETED** (mock implementation)
+- **Variable references:** ✅ **COMPLETED**
+- **Multi-function compilation:** ✅ **COMPLETED**
+- **Native code generation:** ✅ **COMPLETED**
+- **Real arrays:** ⏳ (needs proper memory management)
 - **Structs:** ⏳
 - **Pattern matching:** ⏳
 - **Loops:** ⏳

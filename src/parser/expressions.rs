@@ -635,6 +635,32 @@ impl<'a> Parser<'a> {
                         span,
                     })
                 }
+                TokenType::If => {
+                    // Parse if expression: if condition { then_block } else { else_block }
+                    self.advance()?; // consume 'if'
+                    
+                    let condition = Box::new(self.parse_expression()?);
+                    let then_block = Box::new(self.parse_block_expression()?);
+                    
+                    let else_block = if self.match_token(&TokenType::Else) {
+                        Some(Box::new(self.parse_block_expression()?))
+                    } else {
+                        None
+                    };
+                    
+                    let end_pos = else_block.as_ref()
+                        .map(|e| e.span().end)
+                        .unwrap_or_else(|| then_block.span().end);
+                    
+                    let span = Span::new(start_pos, end_pos);
+                    
+                    Ok(Expr::If {
+                        condition,
+                        then_block,
+                        else_block,
+                        span,
+                    })
+                }
                 _ => Err(ParseError::ExpectedExpression {
                     position: start_pos,
                 }),
@@ -658,7 +684,7 @@ impl<'a> Parser<'a> {
                 TokenType::LeftBracket | TokenType::LeftBrace |
                 TokenType::Not | TokenType::Minus | TokenType::Plus |
                 TokenType::Star | TokenType::And | TokenType::Tilde |
-                TokenType::Box | TokenType::Move
+                TokenType::Box | TokenType::Move | TokenType::If
             )
         } else {
             false
