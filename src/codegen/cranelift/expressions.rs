@@ -3,8 +3,8 @@
 //! This module handles expression code generation for all Bract expressions.
 
 use crate::ast::{Expr, Literal};
-use super::{CodegenResult, CodegenError, utils};
-use cranelift::prelude::{types as ctypes, Type, Value, InstBuilder};
+use super::{CodegenResult, CodegenError};
+use cranelift::prelude::{types as ctypes, Value, InstBuilder};
 use cranelift_frontend::FunctionBuilder;
 
 /// Compile an expression to Cranelift IR
@@ -80,7 +80,7 @@ pub fn compile_literal(builder: &mut FunctionBuilder, literal: &Literal) -> Code
 }
 
 /// Compile a variable reference
-fn compile_variable(builder: &mut FunctionBuilder, _name: &crate::ast::InternedString) -> CodegenResult<Value> {
+fn compile_variable(_builder: &mut FunctionBuilder, _name: &crate::ast::InternedString) -> CodegenResult<Value> {
     // TODO: Implement variable lookup from symbol table
     Err(CodegenError::UnsupportedFeature(
         "Variable references not yet implemented".to_string()
@@ -183,7 +183,7 @@ fn compile_array_access(
     let two = builder.ins().iconst(ctypes::I32, 2);
     
     let is_zero = builder.ins().icmp(cranelift::prelude::IntCC::Equal, index_val, zero);
-    let is_one = builder.ins().icmp(cranelift::prelude::IntCC::Equal, index_val, one);
+    let _is_one = builder.ins().icmp(cranelift::prelude::IntCC::Equal, index_val, one);
     let is_two = builder.ins().icmp(cranelift::prelude::IntCC::Equal, index_val, two);
     
     // Use select to choose the right element

@@ -42,6 +42,7 @@ pub struct CraneliftCodeGenerator {
     /// Object module for code generation
     module: Option<ObjectModule>,
     /// Symbol table from semantic analysis
+    #[allow(dead_code)] // TODO: Use for symbol resolution when implementing advanced features
     symbol_table: SymbolTable,
     /// Target triple
     target_triple: Triple,
@@ -122,6 +123,7 @@ impl CraneliftCodeGenerator {
     }
     
     /// Generate a simple main function for testing (fallback)
+    #[allow(dead_code)] // TODO: Use as fallback when no main function is provided
     fn generate_simple_main(&mut self) -> CodegenResult<()> {
         let module = self.module.as_mut().unwrap();
         

@@ -5,7 +5,7 @@
 
 use crate::ast::{Item, Stmt, Expr, Type as AstType, Parameter, Pattern};
 use super::{CodegenResult, CodegenError, utils, expressions};
-use cranelift::prelude::{types as ctypes, Type, Value, InstBuilder, AbiParam, Signature};
+use cranelift::prelude::{types as ctypes, Type, Value, InstBuilder, AbiParam};
 use cranelift_codegen::ir::StackSlot;
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext};
 use cranelift_module::{Module as CraneliftModule, Linkage};
@@ -517,72 +517,7 @@ fn compile_let_statement(
     }
 }
 
-/// Compile a single statement
-fn compile_statement(
-    builder: &mut FunctionBuilder,
-    statement: &Stmt,
-) -> CodegenResult<()> {
-    match statement {
-        Stmt::Return { expr, .. } => {
-            if let Some(expr) = expr {
-                let value = compile_expression_to_value(builder, expr)?;
-                builder.ins().return_(&[value]);
-            } else {
-                builder.ins().return_(&[]);
-            }
-            Ok(())
-        }
-        Stmt::Expression { expr, .. } => {
-            // Evaluate expression but ignore result
-            compile_expression_to_value(builder, expr)?;
-            Ok(())
-        }
-        _ => Err(CodegenError::UnsupportedFeature(
-            format!("Statement not yet supported: {:?}", statement)
-        )),
-    }
-}
 
-/// Compile an expression to a Cranelift value (legacy version without variables)
-fn compile_expression_to_value(
-    builder: &mut FunctionBuilder,
-    expr: &Expr,
-) -> CodegenResult<Value> {
-    match expr {
-        Expr::Literal { literal, .. } => {
-            expressions::compile_literal(builder, literal)
-        }
-        Expr::Block { statements, trailing_expr, .. } => {
-            // Compile all statements
-            for stmt in statements {
-                compile_statement(builder, stmt)?;
-            }
-            
-            // Return trailing expression or unit
-            if let Some(trailing) = trailing_expr {
-                compile_expression_to_value(builder, trailing)
-            } else {
-                // Return unit/void - for now return 0
-                Ok(builder.ins().iconst(ctypes::I32, 0))
-            }
-        }
-        Expr::Return { value, .. } => {
-            if let Some(value_expr) = value {
-                let value = compile_expression_to_value(builder, value_expr)?;
-                builder.ins().return_(&[value]);
-                // This is unreachable, but we need to return a value
-                Ok(builder.ins().iconst(ctypes::I32, 0))
-            } else {
-                builder.ins().return_(&[]);
-                Ok(builder.ins().iconst(ctypes::I32, 0))
-            }
-        }
-        _ => {
-            // Use the expressions module for other expression types
-            expressions::compile_expression(builder, expr)
-        }
-    }
-}
 
 /// Convert AST type to Cranelift type
 fn ast_type_to_cranelift_type(ast_type: &AstType) -> CodegenResult<Type> {
@@ -683,7 +618,7 @@ fn compile_array_index_with_variables(
     let two = builder.ins().iconst(ctypes::I32, 2);
     
     let is_zero = builder.ins().icmp(cranelift::prelude::IntCC::Equal, index_val, zero);
-    let is_one = builder.ins().icmp(cranelift::prelude::IntCC::Equal, index_val, one);
+    let _is_one = builder.ins().icmp(cranelift::prelude::IntCC::Equal, index_val, one);
     let is_two = builder.ins().icmp(cranelift::prelude::IntCC::Equal, index_val, two);
     
     // Use select to choose the right element
