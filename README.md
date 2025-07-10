@@ -68,8 +68,8 @@ fn main() {
 - Git
 
 ```bash
-git clone https://github.com/yourusername/Bract-lang
-cd Bract-lang
+git clone https://github.com/101shaan/Bract
+cd Bract
 cargo build --release
 ```
 
