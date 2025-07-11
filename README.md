@@ -99,5 +99,3 @@ Bract is in very early development. Contributions are welcome!
 MIT License - see [LICENSE](LICENSE) for details
 
 ---
-
-*LLMs have been leveraged to help transform my ideas for the language into ARCHITECTURE.md, GRAMMAR.MD, LANGUAGE_SPEC.md and the README.md.*
