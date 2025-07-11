@@ -44,7 +44,7 @@ fn main() {
 
 ### Phase 2: Compilation
 - [x] Code generation (C transpilation)
-- [@] Native machine code compilation
+- [ ] Native machine code compilation (In Progress)
 - [ ] Optimization passes
 - [ ] Error diagnostics
 
