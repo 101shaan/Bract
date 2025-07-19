@@ -3,8 +3,6 @@
 //! This module handles code generation for different AST item types including
 //! functions, structs, enums, constants, and modules.
 
-use cranelift_codegen::write_function;
-
 use crate::ast::*;
 use super::{CodegenContext, CodegenResult, CodegenError, CCodeBuilder, CodegenMetrics};
 // Removed unused import
