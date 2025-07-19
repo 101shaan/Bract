@@ -372,7 +372,7 @@ fn compile_expression_with_variables(
         Expr::Identifier { name, .. } => {
             // Variable lookup - FIXED!
             if let Some(var_info) = var_context.get_variable(name.id) {
-                // Load from stack slot
+            // Load from stack slot
                 Ok(builder.ins().stack_load(var_info.cranelift_type, var_info.stack_slot, 0))
             } else {
                 let var_name = interner.get(name)
@@ -1016,7 +1016,7 @@ fn compile_function_call_with_variables(
         // Subtraction function
         if compiled_args.len() >= 2 {
             builder.ins().isub(compiled_args[0], compiled_args[1])
-        } else {
+    } else {
             return Err(CodegenError::InternalError("subtract requires 2 arguments".to_string()));
         }
     } else if func_name == "multiply" || func_name == "mul" {
