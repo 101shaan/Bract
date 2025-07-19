@@ -795,3 +795,288 @@ src/
 ---
 
 This architecture document serves as a blueprint for implementing the Bract compiler. It prioritizes compilation speed while maintaining the language's safety guarantees and code quality. The design allows for incremental development, starting with a simpler C backend and evolving toward a full LLVM-based compiler with advanced optimization capabilities. 
+
+---
+
+## 13. Performance-Guaranteed Systems Programming (REVOLUTIONARY FEATURE)
+
+### 13.1 Overview - Bract's Killer Differentiator
+
+**Bract's Core Innovation**: The first systems language with **compile-time enforceable performance contracts**.
+
+Every function can declare its performance requirements:
+```bract
+@guarantee(cpu: 500μs, mem: 4KB, allocs: 0)
+fn render_frame(buffer: &mut PixelBuffer) -> Result<(), RenderError> {
+    // Compiler REJECTS if implementation exceeds constraints
+    // Hardware-specific optimizations applied automatically
+}
+```
+
+This enables:
+- **Real-time systems programming** with mathematical guarantees
+- **Zero-surprise performance** - no hidden costs or GC pauses  
+- **Hardware-aware optimization** - arch-specific codegen based on contracts
+- **Performance SLA enforcement** - CI fails on performance regressions
+
+### 13.2 Performance Contract System
+
+#### 13.2.1 Contract Annotations
+
+Performance contracts are first-class language constructs:
+
+```bract
+@guarantee(
+    cpu: 1_000_000cy,     // Maximum CPU cycles
+    mem: 1024B,           // Maximum memory usage
+    allocs: 1,            // Maximum heap allocations
+    latency: 50μs,        // Maximum end-to-end latency
+    stack: 256B           // Maximum stack usage
+)
+fn parse_json(input: &str) -> Result<Value, ParseError>
+```
+
+**Contract Parameters:**
+- `cpu: N` - Maximum CPU cycles (architecture-aware)
+- `mem: N` - Maximum memory footprint in bytes
+- `allocs: N` - Maximum heap allocations (0 = stack-only)  
+- `latency: T` - End-to-end execution time bound
+- `stack: N` - Maximum stack frame size
+- `deterministic: bool` - Guarantee deterministic execution time
+
+#### 13.2.2 Contract Enforcement
+
+**Compile-Time Verification:**
+1. **Static Analysis Pass** - Estimate costs from IR
+2. **Cross-Function Propagation** - Track costs through call chains
+3. **Generic Specialization** - Separate contracts per type instantiation
+4. **Architecture Profiling** - Hardware-specific cost models
+
+**Runtime Verification (Debug Mode):**
+```bract
+#[cfg(debug)]
+@runtime_verify  // Insert performance monitoring code
+@guarantee(cpu: 1ms)
+fn critical_path() { ... }
+```
+
+**Violation Handling:**
+- **Compile-time**: Hard error, build fails
+- **Runtime**: Configurable (panic/log/ignore in release)
+
+#### 13.2.3 Cost Estimation Engine
+
+**IR-Level Instrumentation:**
+```rust
+pub struct PerformancePass {
+    /// Hardware cost models per architecture
+    cost_models: HashMap<TargetTriple, CostModel>,
+    /// Cost accumulator per function
+    function_costs: HashMap<FunctionId, PerformanceCost>,
+}
+
+pub struct PerformanceCost {
+    pub cycles: CycleEstimate,
+    pub memory_bytes: usize,
+    pub allocations: u32,
+    pub stack_bytes: usize,
+}
+```
+
+**Architecture-Specific Models:**
+- x86_64: Instruction cycle tables, cache hierarchy
+- ARM64: Pipeline modeling, memory latency
+- RISC-V: Simple cycle model
+- WASM: V8/SpiderMonkey cost profiles
+
+### 13.3 Hybrid Memory Model
+
+#### 13.3.1 Four Memory Strategies
+
+**1. Arena Allocation (Zero-Cost Cleanup):**
+```bract
+region temp {
+    let buffer = alloc<[u8; 1024]>();  // Arena allocated
+    let data = parse_frame(buffer);
+    // Entire region freed at once - O(1) cleanup
+}
+```
+
+**2. Reference Counting (Shared Ownership):**
+```bract
+let shared_data = rc::new(expensive_computation());
+let handle1 = shared_data.clone();  // Increment refcount
+let handle2 = shared_data.clone();
+// Freed when last reference drops
+```
+
+**3. Linear Values (Move-Only Types):**
+```bract
+fn transfer_ownership() -> Linear<FileHandle> {
+    let file = File::open("data.txt")?;
+    file.into_linear()  // Can only be moved, never copied
+}
+```
+
+**4. Manual Memory (Unsafe Escape Hatch):**
+```bract
+unsafe {
+    let ptr = malloc(1024);
+    // Programmer responsible for free()
+    free(ptr);
+}
+```
+
+#### 13.3.2 Memory Region System
+
+**Lexically-Scoped Regions:**
+```bract
+@guarantee(mem: 64KB, allocs: 0)  // All allocations from arena
+fn process_batch() {
+    region parser_arena {
+        let tokens = lex_input();      // Arena allocated
+        let ast = parse_tokens(tokens); // Arena allocated
+        emit_bytecode(ast);
+    } // Entire arena freed in one operation
+}
+```
+
+**Cross-Function Regions:**
+```bract
+fn with_temp_storage<F, R>(f: F) -> R 
+where F: FnOnce(&mut Arena) -> R {
+    region temp {
+        f(&mut current_arena())
+    }
+}
+```
+
+### 13.4 Standard Library with Performance Contracts
+
+Every stdlib function must have a performance contract:
+
+```bract
+// Vector operations
+impl<T> Vec<T> {
+    @guarantee(cpu: 50ns, mem: 0, allocs: 0)
+    fn push(&mut self, item: T) { ... }
+    
+    @guarantee(cpu: O(n), mem: size_of::<T>() * capacity, allocs: 1)
+    fn extend_from_slice(&mut self, slice: &[T]) { ... }
+}
+
+// File I/O
+@guarantee(cpu: syscall_cost(), mem: 0, allocs: 0, latency: 100μs)
+fn read_exact(&mut self, buf: &mut [u8]) -> io::Result<()>
+
+// Networking
+@guarantee(cpu: 1μs, mem: 0, allocs: 0, latency: network_rtt())
+fn send_packet(&self, data: &[u8]) -> Result<(), SendError>
+```
+
+### 13.5 Concurrency with Performance Guarantees
+
+**Performance-Aware Task Spawning:**
+```bract
+spawn[
+    priority: HIGH,
+    core: 3,                    // CPU affinity
+    @guarantee(latency: 1ms)
+] => {
+    process_realtime_audio();
+};
+
+// Channel operations with bounded costs
+@guarantee(cpu: 200ns, allocs: 0)
+fn send<T>(&self, value: T) -> Result<(), SendError<T>>
+```
+
+**Lock-Free Performance Contracts:**
+```bract
+@guarantee(cpu: 50ns, mem: 0, allocs: 0, wait_free: true)
+fn atomic_increment(&self) -> u64 {
+    self.counter.fetch_add(1, Ordering::AcqRel)
+}
+```
+
+### 13.6 FFI with Contract Verification
+
+```bract
+@extern(guarantee: UNVERIFIED)  // Mark as potentially expensive
+unsafe fn c_function(ptr: *mut u8) -> i32;
+
+@extern(guarantee: @cpu(100ns, @mem(0), @allocs(0)))
+unsafe fn fast_math_lib(x: f64) -> f64;  // Verified external contract
+```
+
+### 13.7 Implementation Architecture
+
+#### 13.7.1 Parser Extensions
+
+```rust
+// New AST nodes for performance contracts
+pub struct PerformanceContract {
+    pub cpu_bound: Option<CpuBound>,
+    pub memory_bound: Option<MemoryBound>, 
+    pub allocation_bound: Option<AllocationBound>,
+    pub latency_bound: Option<LatencyBound>,
+    pub deterministic: bool,
+}
+
+pub enum CpuBound {
+    Cycles(u64),
+    Time(Duration),
+    Complexity(BigO), // O(1), O(n), O(log n), etc.
+}
+```
+
+#### 13.7.2 Cost Analysis Pass
+
+```rust
+pub struct CostAnalysisPass {
+    /// Per-architecture instruction costs
+    instruction_costs: HashMap<Target, InstructionCostTable>,
+    /// Function call cost cache
+    call_costs: HashMap<FunctionId, PerformanceCost>,
+    /// Generic specialization costs
+    monomorphization_costs: HashMap<(FunctionId, TypeSubst), PerformanceCost>,
+}
+
+impl CostAnalysisPass {
+    pub fn analyze_function(&mut self, func: &Function) -> PerformanceCost {
+        let mut total_cost = PerformanceCost::zero();
+        
+        for block in &func.blocks {
+            for stmt in &block.statements {
+                total_cost += self.estimate_statement_cost(stmt);
+            }
+        }
+        
+        total_cost
+    }
+}
+```
+
+#### 13.7.3 Runtime Verification
+
+```rust
+#[cfg(debug_assertions)]
+pub struct PerformanceProfiler {
+    start_cycles: u64,
+    peak_memory: usize,
+    allocation_count: u32,
+    contract: PerformanceContract,
+}
+
+impl PerformanceProfiler {
+    pub fn verify_contract(&self) -> Result<(), ContractViolation> {
+        if self.elapsed_cycles() > self.contract.cpu_bound.cycles() {
+            return Err(ContractViolation::CpuExceeded);
+        }
+        // ... other checks
+        Ok(())
+    }
+}
+```
+
+--- 
