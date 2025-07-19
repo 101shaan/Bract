@@ -126,4 +126,9 @@ impl CraneliftContext {
     pub fn variable_count(&self) -> usize {
         self.variables.len()
     }
+
+    /// Get all registered functions
+    pub fn get_all_functions(&self) -> &HashMap<String, FuncId> {
+        &self.functions
+    }
 } 
