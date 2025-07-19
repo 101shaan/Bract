@@ -26,14 +26,23 @@ impl<'a> Lexer<'a> {
     /// Create a new lexer from input source code
     pub fn new(input: &'a str, file_id: usize) -> Self {
         let mut chars = input.chars();
-        let current_char = chars.next();
+        let mut current_char = chars.next();
+        let mut position = Position::start(file_id);
+        let mut current_pos = 0;
+        
+        // Skip BOM (Byte Order Mark) if present
+        if let Some('\u{FEFF}') = current_char {
+            current_pos += 3; // BOM is 3 bytes in UTF-8
+            position.advance('\u{FEFF}');
+            current_char = chars.next();
+        }
         
         Self {
             _input: input,
             chars,
-            current_pos: 0,
+            current_pos,
             current_char,
-            position: Position::start(file_id),
+            position,
             keywords: Self::init_keywords(),
             include_comments: false,
         }
