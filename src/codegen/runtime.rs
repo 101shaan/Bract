@@ -1047,13 +1047,13 @@ impl RuntimeGenerator {
     pub fn write_runtime_files(&mut self, output_dir: &Path) -> CodegenResult<()> {
         let (header, implementation) = self.generate_runtime()?;
         
-        // Write header file
-        let header_path = output_dir.join("prism_runtime.h");
+        // Write header file with correct Bract naming
+        let header_path = output_dir.join("Bract_runtime.h");
         fs::write(&header_path, header)
             .map_err(|e| CodegenError::IoError(format!("Failed to write runtime header: {}", e)))?;
         
-        // Write implementation file
-        let impl_path = output_dir.join("prism_runtime.c");
+        // Write implementation file with correct Bract naming
+        let impl_path = output_dir.join("Bract_runtime.c");
         fs::write(&impl_path, implementation)
             .map_err(|e| CodegenError::IoError(format!("Failed to write runtime implementation: {}", e)))?;
         

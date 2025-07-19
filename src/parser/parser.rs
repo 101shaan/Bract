@@ -142,6 +142,11 @@ impl<'a> Parser<'a> {
         &self.errors
     }
     
+    /// Extract the string interner (consumes the parser)
+    pub fn take_interner(self) -> StringInterner {
+        self.interner
+    }
+    
     /// Synchronize parser state after an error (error recovery)
     pub fn synchronize(&mut self) {
         while !self.is_at_end() {

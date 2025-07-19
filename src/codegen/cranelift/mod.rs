@@ -15,6 +15,7 @@
 
 use crate::ast::{Module, Item};
 use crate::semantic::SymbolTable;
+use crate::parser::StringInterner;
 use super::{CodegenResult, CodegenError};
 
 use cranelift::prelude::{types as ctypes, Type, AbiParam, InstBuilder};
@@ -44,6 +45,8 @@ pub struct CraneliftCodeGenerator {
     /// Symbol table from semantic analysis
     #[allow(dead_code)] // TODO: Use for symbol resolution when implementing advanced features
     symbol_table: SymbolTable,
+    /// String interner for name resolution
+    interner: StringInterner,
     /// Target triple
     target_triple: Triple,
     /// Function builder context (reused for performance)
@@ -52,7 +55,7 @@ pub struct CraneliftCodeGenerator {
 
 impl CraneliftCodeGenerator {
     /// Create a new Cranelift code generator
-    pub fn new(symbol_table: SymbolTable) -> CodegenResult<Self> {
+    pub fn new(symbol_table: SymbolTable, interner: StringInterner) -> CodegenResult<Self> {
         let target_triple = Triple::host();
         
         // Create optimized settings for native code generation
@@ -80,6 +83,7 @@ impl CraneliftCodeGenerator {
             context: CraneliftContext::new(),
             module: Some(module),
             symbol_table,
+            interner,
             target_triple,
             builder_context: FunctionBuilderContext::new(),
         })
@@ -91,7 +95,7 @@ impl CraneliftCodeGenerator {
         for item in &module.items {
             if let Item::Function { .. } = item {
                 let module_ref = self.module.as_mut().unwrap();
-                functions::declare_function_item(module_ref, item, &mut self.context)?;
+                functions::declare_function_item(module_ref, item, &mut self.context, &self.interner)?;
             }
         }
         
@@ -100,7 +104,7 @@ impl CraneliftCodeGenerator {
             match item {
                 Item::Function { .. } => {
                     let module_ref = self.module.as_mut().unwrap();
-                    functions::compile_function_item(module_ref, item, &mut self.builder_context, &mut self.context)?;
+                    functions::compile_function_item(module_ref, item, &mut self.builder_context, &mut self.context, &self.interner)?;
                 }
                 _ => {
                     // Skip non-function items for now
@@ -109,10 +113,18 @@ impl CraneliftCodeGenerator {
             }
         }
         
-        // Check if main function exists - for now we'll skip the fallback since we have main
-        // TODO: Properly check for main function when we implement string interning lookup
-        // For now, assume user provides main function
-        let _has_main = true;
+        // Check if main function exists properly
+        let has_main = module.items.iter().any(|item| {
+            if let Item::Function { name, .. } = item {
+                self.interner.get(name).map_or(false, |n| n == "main")
+            } else {
+                false
+            }
+        });
+        
+        if !has_main {
+            return Err(CodegenError::InternalError("No main function found".to_string()));
+        }
         
         // Finalize and produce object code
         let module = self.module.take().unwrap();

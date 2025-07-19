@@ -9,4 +9,5 @@ pub mod error;
 mod tests;
 
 pub use parser::Parser;
+pub use parser::StringInterner;
 pub use error::{ParseError, ParseResult}; 

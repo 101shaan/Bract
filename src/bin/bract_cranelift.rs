@@ -158,6 +158,9 @@ fn compile_native(args: &Args) -> Result<(), String> {
     let module = parser.parse_module()
         .map_err(|e| format!("Parse error: {:?}", e))?;
     
+    // Extract the string interner from the parser
+    let interner = parser.take_interner();
+    
     if args.verbose {
         println!("   Parsed {} items in {:?}", module.items.len(), parse_start.elapsed());
     }
@@ -195,7 +198,7 @@ fn compile_native(args: &Args) -> Result<(), String> {
     
     let codegen_start = Instant::now();
     
-    let mut code_generator = CraneliftCodeGenerator::new(symbol_table)
+    let mut code_generator = CraneliftCodeGenerator::new(symbol_table, interner)
         .map_err(|e| format!("Failed to create code generator: {}", e))?;
     
     if args.verbose {

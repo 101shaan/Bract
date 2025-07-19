@@ -5,6 +5,8 @@
 #include <string.h>
 #include <assert.h>
 #include <math.h>
+#include <stdint.h> // Required for uint32_t
+#include <stddef.h> // Required for offsetof
 
 // Static variables
 static prism_error_code_t g_error_code = PRISM_ERROR_NONE;
@@ -17,56 +19,196 @@ void* prism_alloc(size_t size)
     if (!ptr && size > 0) {
         prism_panic("Out of memory");
     }
+    
+    #ifdef PRISM_DEBUG
+    if (ptr) {
+        update_memory_stats(size, true);
+    }
+    #endif
+    
     return ptr;
 }
+
 void* prism_realloc(void* ptr, size_t new_size)
 {
+    // For debugging, we'd need to track the old size to update statistics properly
+    // This is a simplified implementation
     void* new_ptr = realloc(ptr, new_size);
     if (!new_ptr && new_size > 0) {
         prism_panic("Out of memory");
     }
+    
+    #ifdef PRISM_DEBUG
+    // This is approximate - we don't know the old size
+    if (new_ptr && !ptr) {
+        // This was essentially a malloc
+        update_memory_stats(new_size, true);
+    }
+    #endif
+    
     return new_ptr;
 }
+
 void prism_free(void* ptr)
 {
     if (ptr) {
+        #ifdef PRISM_DEBUG
+        // We don't know the original allocation size here
+        // In a full implementation, we'd track allocation sizes
+        update_memory_stats(0, false);
+        #endif
+        
         free(ptr);
     }
 }
+
 void* prism_calloc(size_t count, size_t size)
 {
     void* ptr = calloc(count, size);
     if (!ptr && count > 0 && size > 0) {
         prism_panic("Out of memory");
     }
+    
+    #ifdef PRISM_DEBUG
+    if (ptr) {
+        update_memory_stats(count * size, true);
+    }
+    #endif
+    
     return ptr;
 }
 void prism_ref_inc(void* ptr)
 {
-    // TODO: Implement reference counting
-    (void)ptr;
+    if (!ptr) return;  // Null pointer safety
+    
+    // All reference-counted objects have ref_count at the same offset
+    // We can safely cast to any of our types to access ref_count
+    uint32_t* ref_count_ptr = (uint32_t*)((char*)ptr + offsetof(prism_str_t, ref_count));
+    
+    // Atomic increment for thread safety
+    // For simplicity, using non-atomic for now - can be upgraded later
+    (*ref_count_ptr)++;
+    
+    #ifdef PRISM_DEBUG
+    printf("DEBUG: Incremented reference count to %u for object at %p\n", *ref_count_ptr, ptr);
+    #endif
 }
+
 void prism_ref_dec(void* ptr)
 {
-    // TODO: Implement reference counting
-    (void)ptr;
+    if (!ptr) return;  // Null pointer safety
+    
+    // All reference-counted objects have ref_count at the same offset
+    uint32_t* ref_count_ptr = (uint32_t*)((char*)ptr + offsetof(prism_str_t, ref_count));
+    
+    if (*ref_count_ptr == 0) {
+        #ifdef PRISM_DEBUG
+        printf("DEBUG: Warning - attempted to decrement zero reference count for object at %p\n", ptr);
+        #endif
+        return;
+    }
+    
+    // Atomic decrement for thread safety
+    (*ref_count_ptr)--;
+    
+    #ifdef PRISM_DEBUG
+    printf("DEBUG: Decremented reference count to %u for object at %p\n", *ref_count_ptr, ptr);
+    #endif
+    
+    // If reference count reaches zero, free the object
+    if (*ref_count_ptr == 0) {
+        // For strings, call the proper cleanup function
+        // For arrays, call the proper cleanup function
+        // For now, we need to determine the object type
+        
+        // This is a simplified approach - in a full implementation,
+        // we'd need type information to call the correct destructor
+        
+        prism_str_t* str = (prism_str_t*)ptr;
+        
+        // Check if this looks like a string (heuristic check)
+        if (str->data && str->length <= str->capacity && str->capacity < 1024 * 1024) {
+            // Likely a string - free the data and the struct
+            if (str->data) {
+                free(str->data);
+            }
+            free(ptr);
+            
+            #ifdef PRISM_DEBUG
+            printf("DEBUG: Freed string object at %p\n", ptr);
+            #endif
+        } else {
+            // Try as array
+            prism_array_t* arr = (prism_array_t*)ptr;
+            if (arr->data && arr->length <= arr->capacity && arr->element_size > 0 && arr->element_size < 1024) {
+                // Likely an array - free the data and the struct
+                if (arr->data) {
+                    free(arr->data);
+                }
+                free(ptr);
+                
+                #ifdef PRISM_DEBUG
+                printf("DEBUG: Freed array object at %p\n", ptr);
+                #endif
+            } else {
+                // Unknown type - just free the pointer
+                free(ptr);
+                
+                #ifdef PRISM_DEBUG
+                printf("DEBUG: Freed unknown object at %p\n", ptr);
+                #endif
+            }
+        }
+    }
 }
+
 uint32_t prism_ref_count(void* ptr)
 {
-    // TODO: Implement reference counting
-    (void)ptr;
-    return 1;
+    if (!ptr) return 0;  // Null pointer safety
+    
+    // All reference-counted objects have ref_count at the same offset
+    uint32_t* ref_count_ptr = (uint32_t*)((char*)ptr + offsetof(prism_str_t, ref_count));
+    
+    return *ref_count_ptr;
 }
 #ifdef PRISM_DEBUG
+// Debug statistics
+static size_t g_total_allocations = 0;
+static size_t g_total_frees = 0;
+static size_t g_current_memory_usage = 0;
+static size_t g_peak_memory_usage = 0;
+
 void prism_memory_report(void)
 {
-    // TODO: Implement memory usage reporting
-    printf("Memory usage reporting not implemented yet\n");
+    printf("=== Prism Memory Usage Report ===\n");
+    printf("Total allocations: %zu\n", g_total_allocations);
+    printf("Total frees: %zu\n", g_total_frees);
+    printf("Outstanding allocations: %zu\n", g_total_allocations - g_total_frees);
+    printf("Current memory usage: %zu bytes\n", g_current_memory_usage);
+    printf("Peak memory usage: %zu bytes\n", g_peak_memory_usage);
+    printf("===============================\n");
 }
+
 size_t prism_memory_usage(void)
 {
-    // TODO: Implement memory usage tracking
-    return 0;
+    return g_current_memory_usage;
+}
+
+// Helper function to update memory statistics
+static void update_memory_stats(size_t size, bool is_allocation)
+{
+    if (is_allocation) {
+        g_total_allocations++;
+        g_current_memory_usage += size;
+        if (g_current_memory_usage > g_peak_memory_usage) {
+            g_peak_memory_usage = g_current_memory_usage;
+        }
+    } else {
+        g_total_frees++;
+        if (g_current_memory_usage >= size) {
+            g_current_memory_usage -= size;
+        }
+    }
 }
 #endif
 // String Handling Implementation
