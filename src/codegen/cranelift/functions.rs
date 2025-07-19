@@ -517,6 +517,36 @@ fn compile_statement_with_variables_and_termination(
             compile_let_statement(builder, pattern, type_annotation, initializer, var_context, interner)?;
             Ok(false) // Non-terminating statement
         }
+        Stmt::Assignment { target, value, .. } => {
+            // Handle assignment
+            compile_assignment_statement(builder, target, value, var_context, interner)?;
+            Ok(false) // Non-terminating statement  
+        }
+        Stmt::If { condition, then_block, else_block, .. } => {
+            // Handle if statement by compiling as expression and ignoring result
+            compile_if_statement_with_variables(builder, condition, then_block, else_block, var_context, interner)?;
+            Ok(false) // Non-terminating statement
+        }
+        Stmt::While { condition, body, .. } => {
+            // Handle while loop
+            compile_while_statement_with_variables(builder, condition, body, var_context, interner)?;
+            Ok(false) // Non-terminating statement
+        }
+        Stmt::For { pattern, iterable, body, .. } => {
+            // Handle for loop - simplified to while loop for now
+            compile_for_statement_with_variables(builder, pattern, iterable, body, var_context, interner)?;
+            Ok(false) // Non-terminating statement
+        }
+        Stmt::Block { statements, .. } => {
+            // Handle block statement by compiling all statements inside with termination tracking
+            for stmt in statements {
+                let stmt_terminated = compile_statement_with_variables_and_termination(builder, stmt, var_context, interner)?;
+                if stmt_terminated {
+                    return Ok(true); // Propagate termination
+                }
+            }
+            Ok(false) // Non-terminating statement
+        }
         _ => Err(CodegenError::UnsupportedFeature(
             format!("Statement not yet supported: {:?}", statement)
         )),
@@ -548,6 +578,29 @@ fn compile_statement_with_variables(
         Stmt::Let { pattern, type_annotation, initializer, .. } => {
             // Handle variable declaration
             compile_let_statement(builder, pattern, type_annotation, initializer, var_context, interner)
+        }
+        Stmt::Assignment { target, value, .. } => {
+            // Handle assignment
+            compile_assignment_statement(builder, target, value, var_context, interner)
+        }
+        Stmt::If { condition, then_block, else_block, .. } => {
+            // Handle if statement by compiling as expression and ignoring result
+            compile_if_statement_with_variables(builder, condition, then_block, else_block, var_context, interner)
+        }
+        Stmt::While { condition, body, .. } => {
+            // Handle while loop
+            compile_while_statement_with_variables(builder, condition, body, var_context, interner)
+        }
+        Stmt::For { pattern, iterable, body, .. } => {
+            // Handle for loop - simplified to while loop for now
+            compile_for_statement_with_variables(builder, pattern, iterable, body, var_context, interner)
+        }
+        Stmt::Block { statements, .. } => {
+            // Handle block statement by compiling all statements inside
+            for stmt in statements {
+                compile_statement_with_variables(builder, stmt, var_context, interner)?;
+            }
+            Ok(())
         }
         _ => Err(CodegenError::UnsupportedFeature(
             format!("Statement not yet supported: {:?}", statement)
@@ -604,7 +657,224 @@ fn compile_let_statement(
     }
 }
 
+/// Compile an assignment statement (variable assignment)
+fn compile_assignment_statement(
+    builder: &mut FunctionBuilder,
+    target: &Expr,
+    value: &Expr,
+    var_context: &mut VariableContext,
+    interner: &StringInterner,
+) -> CodegenResult<()> {
+    match target {
+        Expr::Identifier { name, .. } => {
+            // Get variable info first
+            let stack_slot = if let Some(var_info) = var_context.get_variable(name.id) {
+                var_info.stack_slot
+            } else {
+                let var_name = interner.get(name)
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| format!("var_{}", name.id));
+                return Err(CodegenError::SymbolResolution(
+                    format!("Assignment target '{}' is not a declared variable", var_name)
+                ));
+            };
+            
+            // Compile value and store
+            let value_to_store = compile_expression_with_variables(builder, value, var_context, interner)?;
+            builder.ins().stack_store(value_to_store, stack_slot, 0);
+            Ok(())
+        }
+        _ => Err(CodegenError::UnsupportedFeature(
+            "Only identifier targets supported for assignments".to_string()
+        )),
+    }
+}
 
+/// Compile an if expression with variable context
+fn compile_if_expression_with_variables(
+    builder: &mut FunctionBuilder,
+    condition: &Expr,
+    then_block: &Expr,
+    else_block: &Option<Box<Expr>>,
+    var_context: &mut VariableContext,
+    interner: &StringInterner,
+) -> CodegenResult<Value> {
+    // Compile the condition
+    let condition_val = compile_expression_with_variables(builder, condition, var_context, interner)?;
+    
+    // Create blocks for then, else, and merge
+    let then_bb = builder.create_block();
+    let else_bb = builder.create_block();
+    let merge_bb = builder.create_block();
+    
+    // Add a parameter to the merge block for the result value
+    let merge_param = builder.append_block_param(merge_bb, ctypes::I32);
+    
+    // Branch based on condition (non-zero means true)
+    let zero = builder.ins().iconst(ctypes::I32, 0);
+    let is_true = builder.ins().icmp(cranelift::prelude::IntCC::NotEqual, condition_val, zero);
+    builder.ins().brif(is_true, then_bb, &[], else_bb, &[]);
+    
+    // Compile then block
+    builder.switch_to_block(then_bb);
+    let then_val = compile_expression_with_variables(builder, then_block, var_context, interner)?;
+    builder.ins().jump(merge_bb, &[then_val]);
+    
+    // Compile else block
+    builder.switch_to_block(else_bb);
+    let else_val = if let Some(else_expr) = else_block {
+        compile_expression_with_variables(builder, else_expr, var_context, interner)?
+    } else {
+        // No else block, return unit (0)
+        builder.ins().iconst(ctypes::I32, 0)
+    };
+    builder.ins().jump(merge_bb, &[else_val]);
+    
+    // Switch to merge block and seal all blocks
+    builder.switch_to_block(merge_bb);
+    builder.seal_block(then_bb);
+    builder.seal_block(else_bb);
+    builder.seal_block(merge_bb);
+    
+    // Return the merged value
+    Ok(merge_param)
+}
+
+/// Compile an if statement with variable context
+fn compile_if_statement_with_variables(
+    builder: &mut FunctionBuilder,
+    condition: &Expr,
+    then_block: &[Stmt],
+    else_block: &Option<Box<Stmt>>,
+    var_context: &mut VariableContext,
+    interner: &StringInterner,
+) -> CodegenResult<()> {
+    // Compile the condition
+    let condition_val = compile_expression_with_variables(builder, condition, var_context, interner)?;
+    
+    // Create blocks for then, else, and merge
+    let then_bb = builder.create_block();
+    let else_bb = builder.create_block();
+    let merge_bb = builder.create_block();
+    
+    // Branch based on condition (non-zero means true) - FIX TYPE MISMATCH
+    // We need to determine the type of the condition value to create a matching zero
+    // For now, let's handle the common case where booleans are i8
+    let condition_type = builder.func.dfg.value_type(condition_val);
+    let zero = if condition_type == ctypes::I8 {
+        builder.ins().iconst(ctypes::I8, 0)
+    } else {
+        builder.ins().iconst(ctypes::I32, 0)
+    };
+    let is_true = builder.ins().icmp(cranelift::prelude::IntCC::NotEqual, condition_val, zero);
+    builder.ins().brif(is_true, then_bb, &[], else_bb, &[]);
+    
+    // Compile then block
+    builder.switch_to_block(then_bb);
+    let mut then_terminated = false;
+    for stmt in then_block {
+        let stmt_terminated = compile_statement_with_variables_and_termination(builder, stmt, var_context, interner)?;
+        if stmt_terminated {
+            then_terminated = true;
+            break; // Don't process more statements after termination
+        }
+    }
+    // Only jump to merge if the block didn't terminate
+    if !then_terminated {
+        builder.ins().jump(merge_bb, &[]);
+    }
+    
+    // Compile else block
+    builder.switch_to_block(else_bb);
+    let mut else_terminated = false;
+    if let Some(else_stmt) = else_block {
+        let stmt_terminated = compile_statement_with_variables_and_termination(builder, else_stmt, var_context, interner)?;
+        if stmt_terminated {
+            else_terminated = true;
+        }
+    }
+    // Only jump to merge if the block didn't terminate
+    if !else_terminated {
+        builder.ins().jump(merge_bb, &[]);
+    }
+    
+    // Switch to merge block and seal all blocks
+    builder.switch_to_block(merge_bb);
+    builder.seal_block(then_bb);
+    builder.seal_block(else_bb);
+    builder.seal_block(merge_bb);
+    
+    Ok(())
+}
+
+/// Compile a while statement with variable context
+fn compile_while_statement_with_variables(
+    builder: &mut FunctionBuilder,
+    condition: &Expr,
+    body: &[Stmt],
+    var_context: &mut VariableContext,
+    interner: &StringInterner,
+) -> CodegenResult<()> {
+    let loop_bb = builder.create_block();
+    let body_bb = builder.create_block();  
+    let merge_bb = builder.create_block();
+
+    // Jump to the condition check
+    builder.ins().jump(loop_bb, &[]);
+
+    // Compile the condition
+    builder.switch_to_block(loop_bb);
+    let condition_val = compile_expression_with_variables(builder, condition, var_context, interner)?;
+    
+    // Type-safe zero comparison
+    let condition_type = builder.func.dfg.value_type(condition_val);
+    let zero = if condition_type == ctypes::I8 {
+        builder.ins().iconst(ctypes::I8, 0)
+    } else {
+        builder.ins().iconst(ctypes::I32, 0)
+    };
+    let is_true = builder.ins().icmp(cranelift::prelude::IntCC::NotEqual, condition_val, zero);
+    builder.ins().brif(is_true, body_bb, &[], merge_bb, &[]);
+
+    // Compile the body
+    builder.switch_to_block(body_bb);
+    let mut body_terminated = false;
+    for stmt in body {
+        let stmt_terminated = compile_statement_with_variables_and_termination(builder, stmt, var_context, interner)?;
+        if stmt_terminated {
+            body_terminated = true;
+            break;
+        }
+    }
+    
+    if !body_terminated {
+        builder.ins().jump(loop_bb, &[]); // Continue loop
+    }
+
+    // Seal blocks and switch to merge
+    builder.switch_to_block(merge_bb);
+    builder.seal_block(loop_bb);
+    builder.seal_block(body_bb);
+    builder.seal_block(merge_bb);
+
+    Ok(())
+}
+
+/// Compile a for statement with variable context - STUB IMPLEMENTATION
+fn compile_for_statement_with_variables(
+    _builder: &mut FunctionBuilder,
+    _pattern: &Pattern,
+    _iterable: &Expr,
+    _body: &[Stmt],
+    _var_context: &mut VariableContext,
+    _interner: &StringInterner,
+) -> CodegenResult<()> {
+    // TODO: Implement full for loop support
+    // For now, just return an error indicating it's not implemented
+    Err(CodegenError::UnsupportedFeature(
+        "For loops not yet fully implemented - use while loops instead".to_string()
+    ))
+}
 
 /// Convert AST type to Cranelift type
 fn ast_type_to_cranelift_type(ast_type: &AstType) -> CodegenResult<Type> {
@@ -662,7 +932,7 @@ fn compile_function_call_with_variables(
     };
     
     // Look up the function in the registry
-    let (func_id, func_signature) = var_context.get_function(func_name)
+    let (_func_id, _func_signature) = var_context.get_function(func_name)
         .ok_or_else(|| CodegenError::SymbolResolution(format!("Unknown function: {}", func_name)))?;
     
     // Compile arguments
@@ -817,56 +1087,6 @@ fn compile_array_literal_with_variables(
     // This allows proper array variable assignment and indexing
     let array_addr = builder.ins().stack_addr(ctypes::I64, array_slot, 0);
     Ok(array_addr)
-}
-
-/// Compile an if expression with variable context
-fn compile_if_expression_with_variables(
-    builder: &mut FunctionBuilder,
-    condition: &Expr,
-    then_block: &Expr,
-    else_block: &Option<Box<Expr>>,
-    var_context: &mut VariableContext,
-    interner: &StringInterner,
-) -> CodegenResult<Value> {
-    // Compile the condition
-    let condition_val = compile_expression_with_variables(builder, condition, var_context, interner)?;
-    
-    // Create blocks for then, else, and merge
-    let then_bb = builder.create_block();
-    let else_bb = builder.create_block();
-    let merge_bb = builder.create_block();
-    
-    // Add a parameter to the merge block for the result value
-    let merge_param = builder.append_block_param(merge_bb, ctypes::I32);
-    
-    // Branch based on condition (non-zero means true)
-    let zero = builder.ins().iconst(ctypes::I32, 0);
-    let is_true = builder.ins().icmp(cranelift::prelude::IntCC::NotEqual, condition_val, zero);
-    builder.ins().brif(is_true, then_bb, &[], else_bb, &[]);
-    
-    // Compile then block
-    builder.switch_to_block(then_bb);
-    let then_val = compile_expression_with_variables(builder, then_block, var_context, interner)?;
-    builder.ins().jump(merge_bb, &[then_val]);
-    
-    // Compile else block
-    builder.switch_to_block(else_bb);
-    let else_val = if let Some(else_expr) = else_block {
-        compile_expression_with_variables(builder, else_expr, var_context, interner)?
-    } else {
-        // No else block, return unit (0)
-        builder.ins().iconst(ctypes::I32, 0)
-    };
-    builder.ins().jump(merge_bb, &[else_val]);
-    
-    // Switch to merge block and seal all blocks
-    builder.switch_to_block(merge_bb);
-    builder.seal_block(then_bb);
-    builder.seal_block(else_bb);
-    builder.seal_block(merge_bb);
-    
-    // Return the merged value
-    Ok(merge_param)
 }
 
 // Make the literal compilation function available for expressions.rs
