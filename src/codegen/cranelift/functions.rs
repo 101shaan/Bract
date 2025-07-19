@@ -297,15 +297,15 @@ fn compile_expression_with_variables_and_termination(
             let mut block_terminated = false;
             let mut result_value = None;
             
-            // Compile all statements
+            // Pre-generate a dummy value in case we need it for terminated blocks
+            let dummy_value = builder.ins().iconst(ctypes::I32, 0);
+            
+            // Compile all statements with termination tracking
             for stmt in statements {
-                // Check if this statement might terminate the block
-                if let Stmt::Return { .. } = stmt {
-                    compile_statement_with_variables(builder, stmt, var_context, interner)?;
+                let stmt_terminated = compile_statement_with_variables_and_termination(builder, stmt, var_context, interner)?;
+                if stmt_terminated {
                     block_terminated = true;
-                    break; // Don't process more statements after return
-                } else {
-                    compile_statement_with_variables(builder, stmt, var_context, interner)?;
+                    break; // Don't process more statements after termination
                 }
             }
             
@@ -316,9 +316,15 @@ fn compile_expression_with_variables_and_termination(
                 }
             }
             
-            // Return a value and termination status
-            let final_value = result_value.unwrap_or_else(|| builder.ins().iconst(ctypes::I32, 0));
-            Ok((final_value, block_terminated))
+            // Return appropriate value and termination status
+            if block_terminated {
+                // If block terminated, return pre-generated dummy value without generating new instructions
+                Ok((dummy_value, true))
+            } else {
+                // If block didn't terminate, return actual value
+                let final_value = result_value.unwrap_or(dummy_value);
+                Ok((final_value, false))
+            }
         }
         _ => {
             // For all other expressions, compile normally and mark as not terminated
@@ -457,6 +463,39 @@ fn compile_expression_with_variables(
             // Use the expressions module for other expression types
             expressions::compile_expression(builder, expr)
         }
+    }
+}
+
+/// Compile a single statement with variable context and termination tracking
+fn compile_statement_with_variables_and_termination(
+    builder: &mut FunctionBuilder,
+    statement: &Stmt,
+    var_context: &mut VariableContext,
+    interner: &StringInterner,
+) -> CodegenResult<bool> {
+    match statement {
+        Stmt::Return { expr, .. } => {
+            if let Some(expr) = expr {
+                let value = compile_expression_with_variables(builder, expr, var_context, interner)?;
+                builder.ins().return_(&[value]);
+            } else {
+                builder.ins().return_(&[]);
+            }
+            Ok(true) // Return true to indicate termination
+        }
+        Stmt::Expression { expr, .. } => {
+            // Evaluate expression but ignore result
+            compile_expression_with_variables(builder, expr, var_context, interner)?;
+            Ok(false) // Non-terminating statement
+        }
+        Stmt::Let { pattern, type_annotation, initializer, .. } => {
+            // Handle variable declaration
+            compile_let_statement(builder, pattern, type_annotation, initializer, var_context, interner)?;
+            Ok(false) // Non-terminating statement
+        }
+        _ => Err(CodegenError::UnsupportedFeature(
+            format!("Statement not yet supported: {:?}", statement)
+        )),
     }
 }
 
