@@ -50,4 +50,15 @@ impl Position {
             self.advance(ch);
         }
     }
+}
+
+impl Default for Position {
+    fn default() -> Self {
+        Self {
+            line: 1,
+            column: 1,
+            offset: 0,
+            file_id: 0,
+        }
+    }
 } 
