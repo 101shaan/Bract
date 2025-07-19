@@ -99,7 +99,16 @@ impl CraneliftCodeGenerator {
             }
         }
         
-        // Phase 2: Compile all function bodies
+        // Phase 2: Declare all structs  
+        for item in &module.items {
+            if let Item::Struct { .. } = item {
+                // TODO: Implement struct declaration
+                // For now, just skip structs - they don't need Cranelift declarations
+                continue;
+            }
+        }
+        
+        // Phase 3: Compile all function bodies
         for item in &module.items {
             match item {
                 Item::Function { .. } => {
