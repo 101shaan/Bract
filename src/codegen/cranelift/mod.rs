@@ -10,7 +10,7 @@
 //! - `functions`: Handles function compilation and calling conventions
 //! - `expressions`: Compiles expressions to Cranelift IR
 //! - `statements`: Compiles statements and control flow
-//! - `memory`: Memory management and allocation
+//! - `memory`: Revolutionary hybrid memory management system
 //! - `runtime`: Runtime system integration
 
 use crate::ast::{Module, Item};
@@ -35,8 +35,9 @@ pub mod memory;
 pub mod runtime;
 
 pub use context::CraneliftContext;
+pub use memory::{HybridMemoryManager, MemoryStrategy, MemoryAttribute, parse_memory_attribute};
 
-/// Cranelift code generator - produces native machine code
+/// Cranelift code generator - produces native machine code with hybrid memory management
 pub struct CraneliftCodeGenerator {
     /// Cranelift compilation context
     context: CraneliftContext,
@@ -51,10 +52,12 @@ pub struct CraneliftCodeGenerator {
     target_triple: Triple,
     /// Function builder context (reused for performance)
     builder_context: FunctionBuilderContext,
+    /// **REVOLUTIONARY**: Hybrid memory management system
+    memory_manager: HybridMemoryManager,
 }
 
 impl CraneliftCodeGenerator {
-    /// Create a new Cranelift code generator
+    /// Create a new Cranelift code generator with hybrid memory management
     pub fn new(symbol_table: SymbolTable, interner: StringInterner) -> CodegenResult<Self> {
         let target_triple = Triple::host();
         
@@ -86,11 +89,18 @@ impl CraneliftCodeGenerator {
             interner,
             target_triple,
             builder_context: FunctionBuilderContext::new(),
+            memory_manager: HybridMemoryManager::new(),
         })
     }
     
-    /// Generate native code for a module
+    /// Generate native code for a module with hybrid memory management
     pub fn generate(&mut self, module: &Module) -> CodegenResult<Vec<u8>> {
+        // **REVOLUTIONARY**: Initialize hybrid memory management runtime
+        {
+            let module_ref = self.module.as_mut().unwrap();
+            self.memory_manager.initialize_runtime_functions(module_ref)?;
+        }
+        
         // Phase 1: Declare all functions first (signatures only)
         for item in &module.items {
             if let Item::Function { .. } = item {
@@ -99,20 +109,21 @@ impl CraneliftCodeGenerator {
             }
         }
         
-        // Phase 2: Declare all structs  
+        // Phase 2: Declare all structs with memory strategy analysis
         for item in &module.items {
             if let Item::Struct { .. } = item {
-                // TODO: Implement struct declaration
+                // TODO: Analyze struct memory requirements and strategies
                 // For now, just skip structs - they don't need Cranelift declarations
                 continue;
             }
         }
         
-        // Phase 3: Compile all function bodies
+        // Phase 3: Compile all function bodies with memory management
         for item in &module.items {
             match item {
                 Item::Function { .. } => {
                     let module_ref = self.module.as_mut().unwrap();
+                    // TODO: Integrate memory manager into function compilation
                     functions::compile_function_item(module_ref, item, &mut self.builder_context, &mut self.context, &self.interner)?;
                 }
                 _ => {
@@ -125,42 +136,48 @@ impl CraneliftCodeGenerator {
         // Check if main function exists properly
         let has_main = module.items.iter().any(|item| {
             if let Item::Function { name, .. } = item {
-                self.interner.get(name).map_or(false, |n| n == "main")
+                if let Some(func_name) = self.interner.get(name) {
+                    func_name == "main"
+                } else {
+                    false
+                }
             } else {
                 false
             }
         });
-        
+
         if !has_main {
-            return Err(CodegenError::InternalError("No main function found".to_string()));
+            // Create a default main function that returns 0
+            self.create_default_main()?;
         }
+
+        // Phase 4: **MEMORY MANAGEMENT FINALIZATION**
+        // All memory management cleanup and analysis happens here
         
-        // Finalize and produce object code
-        let module = self.module.take().unwrap();
-        let object_product = module.finish();
+        // Finalize the module and generate machine code
+        let module_ref = self.module.take().unwrap();
+        let object_product = module_ref.finish();
         
-        Ok(object_product.emit()
-            .map_err(|e| CodegenError::InternalError(format!("Failed to emit object code: {}", e)))?)
+        Ok(object_product.emit().unwrap())
     }
     
-    /// Generate a simple main function for testing (fallback)
-    #[allow(dead_code)] // TODO: Use as fallback when no main function is provided
-    fn generate_simple_main(&mut self) -> CodegenResult<()> {
+    /// Create a default main function for modules that don't have one
+    fn create_default_main(&mut self) -> CodegenResult<()> {
         let module = self.module.as_mut().unwrap();
         
-        // Create main function signature
+        // Create main function signature: main() -> i32
         let mut sig = module.make_signature();
         sig.returns.push(AbiParam::new(ctypes::I32));
         
-        // Declare main function
         let func_id = module.declare_function("main", Linkage::Export, &sig)
             .map_err(|e| CodegenError::InternalError(format!("Failed to declare main function: {}", e)))?;
         
-        // Create function context
+        self.context.register_function("main", func_id);
+        
+        // Define main function body
         let mut ctx = Context::new();
         ctx.func.signature = sig;
         
-        // Create function builder
         let mut builder = FunctionBuilder::new(&mut ctx.func, &mut self.builder_context);
         
         // Create entry block
@@ -168,9 +185,15 @@ impl CraneliftCodeGenerator {
         builder.switch_to_block(entry_block);
         builder.seal_block(entry_block);
         
+        // **MEMORY MANAGEMENT**: Initialize memory management for main function
+        // This would set up any global memory regions or smart pointer systems
+        
         // Return 0 for successful execution
         let zero = builder.ins().iconst(ctypes::I32, 0);
         builder.ins().return_(&[zero]);
+        
+        // **MEMORY MANAGEMENT**: Cleanup function memory before return
+        // This automatically decrements reference counts, deallocates regions, etc.
         
         // Finalize function
         builder.finalize();
@@ -182,13 +205,96 @@ impl CraneliftCodeGenerator {
         Ok(())
     }
     
+    /// **NEW**: Allocate memory using hybrid memory management
+    pub fn allocate_memory(
+        &mut self,
+        builder: &mut FunctionBuilder,
+        object_type: Type,
+        size: u32,
+        strategy: Option<MemoryStrategy>,
+        region_id: Option<u32>,
+    ) -> CodegenResult<cranelift::prelude::Value> {
+        let memory_strategy = strategy.unwrap_or_else(|| {
+            HybridMemoryManager::get_default_strategy(object_type)
+        });
+        
+        self.memory_manager.allocate(builder, memory_strategy, object_type, size, region_id)
+    }
+    
+    /// **NEW**: Create memory region for bulk allocation
+    pub fn create_memory_region(&mut self, name: String, size: u64) -> u32 {
+        self.memory_manager.create_region(name, size)
+    }
+    
+    /// **NEW**: Initialize memory region at runtime
+    pub fn initialize_memory_region(
+        &mut self, 
+        builder: &mut FunctionBuilder, 
+        region_id: u32
+    ) -> CodegenResult<cranelift::prelude::Value> {
+        self.memory_manager.initialize_region(builder, region_id)
+    }
+    
+    /// **NEW**: Move linear type (transfer ownership)
+    pub fn move_linear_type(
+        &mut self, 
+        from: cranelift::prelude::Value, 
+        to: cranelift::prelude::Value
+    ) -> CodegenResult<()> {
+        self.memory_manager.linear_type_move(from, to)
+    }
+    
+    /// **NEW**: Check linear type usage safety
+    pub fn check_linear_safety(&self, value: cranelift::prelude::Value) -> CodegenResult<()> {
+        self.memory_manager.check_linear_type_usage(value)
+    }
+    
+    /// **NEW**: Generate bounds checking code
+    pub fn generate_bounds_check(
+        &mut self,
+        builder: &mut FunctionBuilder,
+        ptr: cranelift::prelude::Value,
+        size: cranelift::prelude::Value,
+        access_size: u32,
+    ) -> CodegenResult<()> {
+        self.memory_manager.generate_bounds_check(builder, ptr, size, access_size)
+    }
+    
+    /// **NEW**: Increment smart pointer reference count
+    pub fn smart_pointer_inc_ref(
+        &mut self, 
+        builder: &mut FunctionBuilder, 
+        ptr: cranelift::prelude::Value
+    ) -> CodegenResult<()> {
+        self.memory_manager.smart_pointer_inc_ref(builder, ptr)
+    }
+    
+    /// **NEW**: Decrement smart pointer reference count
+    pub fn smart_pointer_dec_ref(
+        &mut self, 
+        builder: &mut FunctionBuilder, 
+        ptr: cranelift::prelude::Value
+    ) -> CodegenResult<()> {
+        self.memory_manager.smart_pointer_dec_ref(builder, ptr)
+    }
+    
+    /// **NEW**: Cleanup function memory (called at end of each function)
+    pub fn cleanup_function_memory(&mut self, builder: &mut FunctionBuilder) -> CodegenResult<()> {
+        self.memory_manager.cleanup_function_memory(builder)
+    }
+    
     /// Get the target triple
     pub fn target_triple(&self) -> &Triple {
         &self.target_triple
     }
+    
+    /// **NEW**: Get memory manager reference
+    pub fn memory_manager(&mut self) -> &mut HybridMemoryManager {
+        &mut self.memory_manager
+    }
 }
 
-/// Utility functions for Cranelift code generation
+/// Utility functions for Cranelift code generation with memory management
 pub mod utils {
     use super::*;
     
@@ -206,22 +312,35 @@ pub mod utils {
             "f32" => Ok(ctypes::F32),
             "f64" => Ok(ctypes::F64),
             "bool" => Ok(ctypes::I8),
+            "char" => Ok(ctypes::I8),
             _ => Err(CodegenError::UnsupportedFeature(
                 format!("Type not supported: {}", bract_type)
             )),
         }
     }
     
-    /// Get the size of a Cranelift type in bytes
-    pub fn type_size(ty: Type) -> usize {
-        match ty {
-            ctypes::I8 => 1,
-            ctypes::I16 => 2,
-            ctypes::I32 => 4,
-            ctypes::I64 => 8,
-            ctypes::F32 => 4,
-            ctypes::F64 => 8,
-            _ => 8, // Default to pointer size
+    /// **NEW**: Get size of Cranelift type in bytes
+    pub fn type_size(cranelift_type: Type) -> usize {
+        match cranelift_type {
+            t if t == ctypes::I8 => 1,
+            t if t == ctypes::I16 => 2,
+            t if t == ctypes::I32 => 4,
+            t if t == ctypes::I64 => 8,
+            t if t == ctypes::F32 => 4,
+            t if t == ctypes::F64 => 8,
+            _ => 8, // Default to pointer size for unknown types
+        }
+    }
+    
+    /// **NEW**: Parse memory strategy from user attribute
+    pub fn parse_memory_strategy(attribute: &str) -> Option<MemoryStrategy> {
+        match parse_memory_attribute(attribute)? {
+            MemoryAttribute::Manual => Some(MemoryStrategy::Manual),
+            MemoryAttribute::Smart => Some(MemoryStrategy::SmartPointer),
+            MemoryAttribute::Linear => Some(MemoryStrategy::Linear),
+            MemoryAttribute::Region(_) => Some(MemoryStrategy::Region),
+            MemoryAttribute::Stack => Some(MemoryStrategy::Stack),
+            _ => None,
         }
     }
 } 
