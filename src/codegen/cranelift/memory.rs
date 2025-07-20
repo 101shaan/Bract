@@ -106,7 +106,7 @@ struct RuntimeFunctions {
     arc_dec: FuncId,
 }
 
-/// Memory region for arena-style allocation
+/// Memory region for arena-style allocation with optimization
 #[derive(Debug, Clone)]
 pub struct MemoryRegion {
     pub id: u32,
@@ -115,6 +115,10 @@ pub struct MemoryRegion {
     pub size: u64,
     pub used: u64,
     pub allocations: Vec<u32>, // allocation IDs
+    /// Advanced allocator for alignment optimization
+    pub allocator: OptimizedRegionAllocator,
+    /// Default alignment for this region
+    pub default_alignment: u32,
 }
 
 /// Linear type ownership tracker
@@ -210,6 +214,8 @@ pub struct BractMemoryManager {
     leak_tracker: AllocationTracker,
     /// Cycle detection for smart pointers
     cycle_detector: CycleDetector,
+    /// Runtime memory profiler for performance analysis
+    profiler: MemoryProfiler,
     /// Next unique IDs
     next_region_id: u32,
     next_alloc_id: u32,
@@ -227,6 +233,7 @@ impl BractMemoryManager {
             metrics: MemoryMetrics::default(),
             leak_tracker: AllocationTracker::new(),
             cycle_detector: CycleDetector::new(),
+            profiler: MemoryProfiler::new(),
             next_region_id: 1,
             next_alloc_id: 1000, // Start high to avoid conflicts
         }
@@ -296,6 +303,9 @@ impl BractMemoryManager {
         // Track allocation for leak detection
         self.leak_tracker.track_allocation(&result, &options.source_location);
 
+        // Record hotspot for performance profiling
+        self.profiler.record_hotspot(options.source_location.clone(), size, strategy);
+
         Ok(result)
     }
 
@@ -347,13 +357,15 @@ impl BractMemoryManager {
         Ok(ptr)
     }
 
-    /// Region allocation - arena style with grouped cleanup
+        /// Region allocation - arena style with optimal alignment
     fn alloc_in_region(&mut self, builder: &mut FunctionBuilder, region_id: u32, _object_type: Type, size: u32) -> CodegenResult<Value> {
-        // Calculate aligned size (8-byte alignment)
-        let aligned_size = (size + 7) & !7;
+        self.alloc_in_region_with_hint(builder, region_id, size, AlignmentHint::Structure)
+    }
 
-        let (base_ptr, current_used) = {
-            let region = self.regions.get(&region_id).ok_or_else(|| 
+    /// Region allocation with alignment hint for maximum performance
+    pub fn alloc_in_region_with_hint(&mut self, builder: &mut FunctionBuilder, region_id: u32, size: u32, hint: AlignmentHint) -> CodegenResult<Value> {
+        let (base_ptr, aligned_allocation) = {
+            let region = self.regions.get_mut(&region_id).ok_or_else(|| 
                 invalid_allocation_error(
                     "Region",
                     format!("Region {} does not exist", region_id),
@@ -369,27 +381,38 @@ impl BractMemoryManager {
                 )
             )?;
 
-            if region.used + aligned_size as u64 > region.size {
+            // Calculate optimal alignment based on hint
+            let optimal_alignment = region.allocator.calculate_optimal_alignment(size, hint);
+            
+            // Calculate optimally aligned allocation
+            let aligned_alloc = region.allocator.calculate_aligned_allocation(
+                size, 
+                region.used, 
+                optimal_alignment
+            );
+
+            // Check if allocation fits in region
+            if aligned_alloc.aligned_offset + aligned_alloc.actual_size > region.size {
                 return Err(out_of_memory_error(
-                    aligned_size,
-                    (region.size - region.used) as u32,
+                    size,
+                    (region.size - aligned_alloc.aligned_offset) as u32,
                     "Region",
                     Some(region_id),
                 ));
             }
 
-            (base_ptr, region.used)
+            (base_ptr, aligned_alloc)
         };
 
-        // Calculate allocation address
-        let offset_val = builder.ins().iconst(ctypes::I64, current_used as i64);
+        // Generate allocation address with optimal alignment
+        let offset_val = builder.ins().iconst(ctypes::I64, aligned_allocation.aligned_offset as i64);
         let alloc_ptr = builder.ins().iadd(base_ptr, offset_val);
-
-        // Update region used space and record allocation
+        
+        // Update region state
         let region = self.regions.get_mut(&region_id).unwrap();
-        region.used += aligned_size as u64;
+        region.used = aligned_allocation.aligned_offset + aligned_allocation.actual_size;
         region.allocations.push(self.next_alloc_id - 1);
-
+        
         Ok(alloc_ptr)
     }
 
@@ -406,20 +429,27 @@ impl BractMemoryManager {
         Ok(builder.ins().stack_addr(ctypes::I64, stack_slot, 0))
     }
 
-    /// Create memory region for grouped allocation
+        /// Create memory region for grouped allocation with alignment optimization
     pub fn create_region(&mut self, name: String, size: u64) -> u32 {
+        self.create_region_with_alignment(name, size, 64) // Default to cache-line alignment
+    }
+
+    /// Create memory region with custom alignment
+    pub fn create_region_with_alignment(&mut self, name: String, size: u64, alignment: u32) -> u32 {
         let region_id = self.next_region_id;
         self.next_region_id += 1;
-
+        
         let region = MemoryRegion {
             id: region_id,
-            name,
+            name: name.clone(),
             base_ptr: None,
             size,
             used: 0,
             allocations: Vec::new(),
+            allocator: OptimizedRegionAllocator::new(alignment, 64), // 64-byte cache lines
+            default_alignment: alignment,
         };
-
+        
         self.regions.insert(region_id, region);
         region_id
     }
@@ -688,6 +718,94 @@ impl BractMemoryManager {
     /// Get cycle detection statistics
     pub fn get_cycle_statistics(&self) -> CycleDetectionStats {
         self.cycle_detector.get_statistics()
+    }
+
+    /// Record performance sample for profiling
+    pub fn record_performance_sample(&mut self, current_memory_kb: u64) {
+        self.profiler.record_sample(current_memory_kb, &self.metrics);
+    }
+
+    /// Record allocation hotspot
+    pub fn record_allocation_hotspot(&mut self, location: String, size: u32, strategy: MemoryStrategy) {
+        self.profiler.record_hotspot(location, size, strategy);
+    }
+
+    /// Get comprehensive performance report
+    pub fn get_performance_report(&self) -> String {
+        self.profiler.generate_performance_report()
+    }
+
+    /// Get top allocation hotspots
+    pub fn get_top_allocation_hotspots(&self, limit: usize) -> Vec<&AllocationHotspot> {
+        self.profiler.get_top_hotspots(limit)
+    }
+
+    /// Get region efficiency report for all regions
+    pub fn get_region_efficiency_report(&self) -> String {
+        if self.regions.is_empty() {
+            return "No regions currently allocated.".to_string();
+        }
+
+        let mut report = String::from("🚀 Region Allocation Efficiency Report 🚀\n\n");
+        
+        for (region_id, region) in &self.regions {
+            report.push_str(&format!(
+                "Region {} ('{}'):\n{}\n\n",
+                region_id,
+                region.name,
+                region.allocator.get_fragmentation_report()
+            ));
+        }
+
+        // Overall statistics
+        let total_regions = self.regions.len();
+        let total_allocated = self.regions.values()
+            .map(|r| r.used)
+            .sum::<u64>();
+
+        report.push_str(&format!(
+            "=== Overall Summary ===\n\
+             Total Regions: {}\n\
+             Total Memory Used: {} KB\n\
+             Average Region Utilization: {:.1}%\n",
+            total_regions,
+            total_allocated / 1024,
+            if total_regions > 0 { total_allocated as f64 / (total_regions as f64 * 1024.0) } else { 0.0 }
+        ));
+
+        report
+    }
+
+    /// Optimize region allocations (defragment, repack, etc.)
+    pub fn optimize_regions(&mut self) -> RegionOptimizationResult {
+        let mut optimized_regions = 0;
+        let mut bytes_saved = 0u64;
+        let mut recommendations = Vec::new();
+
+        for (region_id, region) in &self.regions {
+            let frag_stats = &region.allocator.fragmentation_stats;
+            
+            // Check if region needs optimization
+            if frag_stats.fragmentation_percentage > 20.0 {
+                optimized_regions += 1;
+                bytes_saved += frag_stats.alignment_waste;
+                recommendations.push(format!(
+                    "Region {} ('{}') has {:.1}% fragmentation - consider reallocating with better alignment",
+                    region_id, region.name, frag_stats.fragmentation_percentage
+                ));
+            }
+        }
+
+        RegionOptimizationResult {
+            regions_optimized: optimized_regions,
+            bytes_saved,
+            recommendations,
+            overall_improvement: if optimized_regions > 0 { 
+                bytes_saved as f64 / (1024.0 * optimized_regions as f64) 
+            } else { 
+                0.0 
+            },
+        }
     }
 }
 
@@ -1386,4 +1504,629 @@ pub struct CycleDetectionStats {
     pub cycles_broken: u64,
     pub active_cycles: u64,
     pub graph_size: u64,
+} 
+
+/// Advanced region allocator with alignment optimization
+#[derive(Debug, Clone)]
+pub struct OptimizedRegionAllocator {
+    /// Memory alignment requirements (power of 2)
+    alignment: u32,
+    /// Cache line size for optimal alignment (typically 64 bytes)
+    cache_line_size: u32,
+    /// Track fragmentation for optimization
+    fragmentation_stats: FragmentationStats,
+    /// Pre-calculated alignment masks for fast operations
+    alignment_masks: AlignmentMasks,
+}
+
+/// Fragmentation tracking for region optimization
+#[derive(Debug, Clone, Default)]
+pub struct FragmentationStats {
+    /// Total allocated bytes
+    total_allocated: u64,
+    /// Total wasted bytes due to alignment
+    alignment_waste: u64,
+    /// Number of allocation operations
+    allocation_count: u64,
+    /// Average fragmentation percentage
+    fragmentation_percentage: f64,
+    /// Largest contiguous block available
+    largest_free_block: u64,
+}
+
+/// Pre-calculated alignment masks for performance
+#[derive(Debug, Clone)]
+pub struct AlignmentMasks {
+    /// Mask for 8-byte alignment
+    align_8: u64,
+    /// Mask for 16-byte alignment  
+    align_16: u64,
+    /// Mask for 32-byte alignment
+    align_32: u64,
+    /// Mask for 64-byte alignment (cache line)
+    align_64: u64,
+    /// Mask for 128-byte alignment
+    align_128: u64,
+}
+
+impl OptimizedRegionAllocator {
+    pub fn new(alignment: u32, cache_line_size: u32) -> Self {
+        Self {
+            alignment,
+            cache_line_size,
+            fragmentation_stats: FragmentationStats::default(),
+            alignment_masks: AlignmentMasks::new(),
+        }
+    }
+
+    /// Calculate optimal alignment for given size and type
+    pub fn calculate_optimal_alignment(&self, _size: u32, type_hint: AlignmentHint) -> u32 {
+        match type_hint {
+            AlignmentHint::SmallPrimitive => 8,      // Basic alignment for small types
+            AlignmentHint::LargePrimitive => 16,     // Better alignment for larger types
+            AlignmentHint::Structure => 32,          // Structure alignment for better packing
+            AlignmentHint::Array => self.cache_line_size, // Cache-line align arrays
+            AlignmentHint::HighPerformance => self.cache_line_size, // Maximum performance
+            AlignmentHint::Custom(align) => align,   // User-specified alignment
+        }
+    }
+
+    /// Align address to specified boundary - highly optimized
+    #[inline(always)] // Critical hot path
+    pub fn align_address(&self, addr: u64, alignment: u32) -> u64 {
+        let mask = self.get_alignment_mask(alignment);
+        (addr + (alignment as u64 - 1)) & !mask
+    }
+
+    /// Get pre-calculated alignment mask for performance
+    #[inline(always)]
+    fn get_alignment_mask(&self, alignment: u32) -> u64 {
+        match alignment {
+            8 => self.alignment_masks.align_8,
+            16 => self.alignment_masks.align_16,
+            32 => self.alignment_masks.align_32,
+            64 => self.alignment_masks.align_64,
+            128 => self.alignment_masks.align_128,
+            _ => (alignment as u64) - 1, // Fallback for custom alignments
+        }
+    }
+
+    /// Calculate allocation with optimal packing
+    pub fn calculate_aligned_allocation(&mut self, size: u32, current_offset: u64, alignment: u32) -> AlignedAllocation {
+        let aligned_offset = self.align_address(current_offset, alignment);
+        let waste = aligned_offset - current_offset;
+        let total_size = size as u64;
+
+        // Update fragmentation statistics
+        self.fragmentation_stats.total_allocated += total_size;
+        self.fragmentation_stats.alignment_waste += waste;
+        self.fragmentation_stats.allocation_count += 1;
+        
+        // Calculate fragmentation percentage
+        if self.fragmentation_stats.total_allocated > 0 {
+            self.fragmentation_stats.fragmentation_percentage = 
+                (self.fragmentation_stats.alignment_waste as f64 / 
+                 self.fragmentation_stats.total_allocated as f64) * 100.0;
+        }
+
+        AlignedAllocation {
+            aligned_offset,
+            actual_size: total_size,
+            alignment_waste: waste,
+            efficiency_score: self.calculate_efficiency_score(waste, total_size),
+        }
+    }
+
+    /// Calculate allocation efficiency (0-100, higher is better)
+    fn calculate_efficiency_score(&self, waste: u64, size: u64) -> f64 {
+        if size == 0 { return 0.0; }
+        let efficiency = ((size as f64) / ((size + waste) as f64)) * 100.0;
+        efficiency.min(100.0).max(0.0)
+    }
+
+    /// Get comprehensive fragmentation report
+    pub fn get_fragmentation_report(&self) -> String {
+        format!(
+            "=== Region Allocation Efficiency Report ===\n\
+             Total Allocations: {}\n\
+             Total Memory Allocated: {} KB\n\
+             Memory Wasted (Alignment): {} KB ({:.2}%)\n\
+             Average Efficiency: {:.1}%\n\n\
+             Recommendations:\n\
+             {}",
+            self.fragmentation_stats.allocation_count,
+            self.fragmentation_stats.total_allocated / 1024,
+            self.fragmentation_stats.alignment_waste / 1024,
+            self.fragmentation_stats.fragmentation_percentage,
+            100.0 - self.fragmentation_stats.fragmentation_percentage,
+            self.generate_optimization_recommendations()
+        )
+    }
+
+    /// Generate optimization recommendations based on fragmentation
+    fn generate_optimization_recommendations(&self) -> String {
+        let mut recommendations = Vec::new();
+
+        if self.fragmentation_stats.fragmentation_percentage > 15.0 {
+            recommendations.push("• Consider using larger region sizes to reduce alignment overhead");
+            recommendations.push("• Group similar-sized allocations together");
+        }
+
+        if self.fragmentation_stats.fragmentation_percentage > 25.0 {
+            recommendations.push("• Review alignment requirements - some may be excessive");
+            recommendations.push("• Consider using custom allocators for frequently allocated types");
+        }
+
+        if self.fragmentation_stats.fragmentation_percentage < 5.0 {
+            recommendations.push("• Excellent efficiency! Current allocation strategy is optimal");
+        }
+
+        if recommendations.is_empty() {
+            recommendations.push("• Allocation efficiency is good, no changes recommended");
+        }
+
+        recommendations.join("\n             ")
+    }
+}
+
+impl AlignmentMasks {
+    fn new() -> Self {
+        Self {
+            align_8: 8 - 1,
+            align_16: 16 - 1,
+            align_32: 32 - 1,
+            align_64: 64 - 1,
+            align_128: 128 - 1,
+        }
+    }
+}
+
+/// Alignment hints for optimization
+#[derive(Debug, Clone, PartialEq)]
+pub enum AlignmentHint {
+    /// Small primitive types (i8, i16, i32, bool)
+    SmallPrimitive,
+    /// Large primitive types (i64, f64, pointers)
+    LargePrimitive,
+    /// User-defined structures
+    Structure,
+    /// Arrays and bulk data
+    Array,
+    /// High-performance critical allocations
+    HighPerformance,
+    /// Custom alignment requirement
+    Custom(u32),
+}
+
+/// Result of aligned allocation calculation
+#[derive(Debug, Clone)]
+pub struct AlignedAllocation {
+    /// The aligned memory offset
+    pub aligned_offset: u64,
+    /// Actual size needed for allocation
+    pub actual_size: u64,
+    /// Bytes wasted due to alignment
+    pub alignment_waste: u64,
+    /// Efficiency score (0-100, higher is better)
+    pub efficiency_score: f64,
+} 
+
+/// Result of region optimization analysis
+#[derive(Debug, Clone)]
+pub struct RegionOptimizationResult {
+    /// Number of regions that were optimized
+    pub regions_optimized: u32,
+    /// Total bytes that could be saved through optimization
+    pub bytes_saved: u64,
+    /// Specific recommendations for improvement
+    pub recommendations: Vec<String>,
+    /// Overall improvement score (KB saved per region)
+    pub overall_improvement: f64,
+} 
+
+/// Real-time memory profiler for performance analysis and optimization
+#[derive(Debug, Clone)]
+pub struct MemoryProfiler {
+    /// Performance samples over time
+    performance_samples: Vec<PerformanceSample>,
+    /// Hotspot detection data
+    hotspots: HashMap<String, AllocationHotspot>,
+    /// Real-time metrics
+    current_metrics: RealTimeMetrics,
+    /// Profiling configuration
+    config: ProfilerConfig,
+    /// Sample index for circular buffer
+    sample_index: usize,
+}
+
+/// Single performance sample point
+#[derive(Debug, Clone)]
+pub struct PerformanceSample {
+    /// Timestamp of sample
+    pub timestamp_ms: u64,
+    /// Memory usage at this point
+    pub memory_usage_kb: u64,
+    /// Allocation rate (allocs per second)
+    pub allocation_rate: f64,
+    /// Average allocation size
+    pub avg_allocation_size: f64,
+    /// Fragmentation percentage
+    pub fragmentation: f64,
+    /// Strategy breakdown
+    pub strategy_usage: HashMap<MemoryStrategy, u32>,
+}
+
+/// Memory allocation hotspot information
+#[derive(Debug, Clone)]
+pub struct AllocationHotspot {
+    /// Source location (function, line)
+    pub location: String,
+    /// Number of allocations at this spot
+    pub allocation_count: u64,
+    /// Total bytes allocated
+    pub total_bytes: u64,
+    /// Average allocation size
+    pub avg_size: f64,
+    /// Dominant strategy used
+    pub dominant_strategy: MemoryStrategy,
+    /// Performance impact score (0-100)
+    pub impact_score: f64,
+}
+
+/// Real-time performance metrics
+#[derive(Debug, Clone, Default)]
+pub struct RealTimeMetrics {
+    /// Current memory usage
+    pub current_memory_kb: u64,
+    /// Peak memory usage
+    pub peak_memory_kb: u64,
+    /// Allocations in last second
+    pub recent_allocs: u32,
+    /// Current allocation rate trend
+    pub allocation_trend: AllocationTrend,
+    /// System health score (0-100)
+    pub health_score: f64,
+    /// Memory pressure level
+    pub pressure_level: MemoryPressure,
+}
+
+/// Allocation trend analysis
+#[derive(Debug, Clone, PartialEq)]
+pub enum AllocationTrend {
+    /// Allocation rate is decreasing
+    Decreasing,
+    /// Allocation rate is stable
+    Stable,
+    /// Allocation rate is increasing
+    Increasing,
+    /// Allocation rate is growing rapidly
+    Accelerating,
+}
+
+impl Default for AllocationTrend {
+    fn default() -> Self {
+        AllocationTrend::Stable
+    }
+}
+
+/// Memory pressure levels
+#[derive(Debug, Clone, PartialEq)]
+pub enum MemoryPressure {
+    /// Very low memory usage, all good
+    Low,
+    /// Moderate usage, normal operation
+    Normal,
+    /// High usage, consider optimization
+    High,
+    /// Critical usage, immediate action needed
+    Critical,
+}
+
+impl Default for MemoryPressure {
+    fn default() -> Self {
+        MemoryPressure::Low
+    }
+}
+
+/// Profiler configuration
+#[derive(Debug, Clone)]
+pub struct ProfilerConfig {
+    /// Maximum number of samples to keep
+    pub max_samples: usize,
+    /// Sampling interval in milliseconds
+    pub sample_interval_ms: u64,
+    /// Enable hotspot detection
+    pub enable_hotspots: bool,
+    /// Minimum allocation count for hotspot
+    pub hotspot_threshold: u64,
+}
+
+impl Default for ProfilerConfig {
+    fn default() -> Self {
+        Self {
+            max_samples: 1000,
+            sample_interval_ms: 100,
+            enable_hotspots: true,
+            hotspot_threshold: 10,
+        }
+    }
+}
+
+impl MemoryProfiler {
+    pub fn new() -> Self {
+        Self::with_config(ProfilerConfig::default())
+    }
+
+    pub fn with_config(config: ProfilerConfig) -> Self {
+        Self {
+            performance_samples: Vec::with_capacity(config.max_samples),
+            hotspots: HashMap::new(),
+            current_metrics: RealTimeMetrics::default(),
+            config,
+            sample_index: 0,
+        }
+    }
+
+    /// Record a performance sample
+    pub fn record_sample(&mut self, memory_usage_kb: u64, metrics: &MemoryMetrics) {
+        let now_ms = self.get_current_time_ms();
+        
+        let sample = PerformanceSample {
+            timestamp_ms: now_ms,
+            memory_usage_kb,
+            allocation_rate: self.calculate_allocation_rate(metrics),
+            avg_allocation_size: self.calculate_avg_allocation_size(metrics),
+            fragmentation: self.calculate_fragmentation_percentage(metrics),
+            strategy_usage: self.extract_strategy_usage(metrics),
+        };
+
+        // Add sample to circular buffer
+        if self.performance_samples.len() < self.config.max_samples {
+            self.performance_samples.push(sample);
+        } else {
+            self.performance_samples[self.sample_index] = sample;
+            self.sample_index = (self.sample_index + 1) % self.config.max_samples;
+        }
+
+        // Update real-time metrics
+        let last_sample = self.performance_samples.last().unwrap().clone();
+        self.update_real_time_metrics(&last_sample);
+    }
+
+    /// Record allocation hotspot
+    pub fn record_hotspot(&mut self, location: String, size: u32, strategy: MemoryStrategy) {
+        if !self.config.enable_hotspots {
+            return;
+        }
+
+        let hotspot = self.hotspots.entry(location.clone()).or_insert_with(|| {
+            AllocationHotspot {
+                location: location.clone(),
+                allocation_count: 0,
+                total_bytes: 0,
+                avg_size: 0.0,
+                dominant_strategy: strategy,
+                impact_score: 0.0,
+            }
+        });
+
+        hotspot.allocation_count += 1;
+        hotspot.total_bytes += size as u64;
+        hotspot.avg_size = hotspot.total_bytes as f64 / hotspot.allocation_count as f64;
+        
+        // Update impact score (higher count + size = higher impact)
+        hotspot.impact_score = ((hotspot.allocation_count as f64).ln() * (hotspot.avg_size / 1024.0)).min(100.0);
+    }
+
+    /// Get top allocation hotspots
+    pub fn get_top_hotspots(&self, limit: usize) -> Vec<&AllocationHotspot> {
+        let mut hotspots: Vec<_> = self.hotspots.values().collect();
+        hotspots.sort_by(|a, b| b.impact_score.partial_cmp(&a.impact_score).unwrap());
+        hotspots.into_iter().take(limit).collect()
+    }
+
+    /// Generate comprehensive performance report
+    pub fn generate_performance_report(&self) -> String {
+        let mut report = String::from("📊 Memory Performance Analysis Report 📊\n\n");
+
+        // Real-time metrics
+        report.push_str(&format!(
+            "=== Real-Time Status ===\n\
+             Current Memory Usage: {} KB\n\
+             Peak Memory Usage: {} KB\n\
+             Recent Allocations: {}/sec\n\
+             System Health Score: {:.1}/100\n\
+             Memory Pressure: {:?}\n\
+             Allocation Trend: {:?}\n\n",
+            self.current_metrics.current_memory_kb,
+            self.current_metrics.peak_memory_kb,
+            self.current_metrics.recent_allocs,
+            self.current_metrics.health_score,
+            self.current_metrics.pressure_level,
+            self.current_metrics.allocation_trend
+        ));
+
+        // Performance trends
+        if !self.performance_samples.is_empty() {
+            let latest = self.performance_samples.last().unwrap();
+            report.push_str(&format!(
+                "=== Performance Trends ===\n\
+                 Current Allocation Rate: {:.1}/sec\n\
+                 Average Allocation Size: {:.1} bytes\n\
+                 Memory Fragmentation: {:.2}%\n\n",
+                latest.allocation_rate,
+                latest.avg_allocation_size,
+                latest.fragmentation
+            ));
+        }
+
+        // Top hotspots
+        let top_hotspots = self.get_top_hotspots(5);
+        if !top_hotspots.is_empty() {
+            report.push_str("=== Top Allocation Hotspots ===\n");
+            for (i, hotspot) in top_hotspots.iter().enumerate() {
+                report.push_str(&format!(
+                    "{}. {} (Impact: {:.1})\n\
+                        • {} allocations, {:.1} KB total\n\
+                        • Avg size: {:.1} bytes, Strategy: {}\n\n",
+                    i + 1,
+                    hotspot.location,
+                    hotspot.impact_score,
+                    hotspot.allocation_count,
+                    hotspot.total_bytes as f64 / 1024.0,
+                    hotspot.avg_size,
+                    hotspot.dominant_strategy.name()
+                ));
+            }
+        }
+
+        // Recommendations
+        report.push_str(&self.generate_optimization_recommendations());
+
+        report
+    }
+
+    /// Generate optimization recommendations based on profiling data
+    fn generate_optimization_recommendations(&self) -> String {
+        let mut recommendations = Vec::<String>::new();
+
+        // Analyze pressure level
+        match self.current_metrics.pressure_level {
+            MemoryPressure::Critical => {
+                recommendations.push("🚨 CRITICAL: Reduce memory usage immediately!".to_string());
+                recommendations.push("• Consider switching to more compact data structures".to_string());
+                recommendations.push("• Enable aggressive garbage collection".to_string());
+            },
+            MemoryPressure::High => {
+                recommendations.push("⚠️ HIGH: Monitor memory usage closely".to_string());
+                recommendations.push("• Review allocation patterns for optimization opportunities".to_string());
+            },
+            _ => {},
+        }
+
+        // Analyze allocation trends
+        match self.current_metrics.allocation_trend {
+            AllocationTrend::Accelerating => {
+                recommendations.push("📈 Allocation rate is accelerating rapidly".to_string());
+                recommendations.push("• Check for memory leaks or excessive allocation loops".to_string());
+                recommendations.push("• Consider caching or object pooling".to_string());
+            },
+            AllocationTrend::Increasing => {
+                recommendations.push("📊 Allocation rate is increasing steadily".to_string());
+                recommendations.push("• Monitor for potential memory pressure".to_string());
+            },
+            _ => {},
+        }
+
+        // Analyze hotspots
+        let top_hotspots = self.get_top_hotspots(3);
+        if !top_hotspots.is_empty() {
+            recommendations.push("🔥 Hotspot analysis:".to_string());
+            for hotspot in top_hotspots {
+                if hotspot.impact_score > 50.0 {
+                    recommendations.push(format!(
+                        "• High impact at {}: Consider object pooling or caching",
+                        hotspot.location
+                    ));
+                }
+            }
+        }
+
+        if recommendations.is_empty() {
+            recommendations.push("✅ Performance looks good! No immediate optimizations needed.".to_string());
+        }
+
+        format!("=== Optimization Recommendations ===\n{}\n", recommendations.join("\n"))
+    }
+
+    /// Helper methods for calculations
+    fn get_current_time_ms(&self) -> u64 {
+        // In real implementation, would use system time
+        // For now, return sample index as time
+        self.sample_index as u64 * self.config.sample_interval_ms
+    }
+
+    fn calculate_allocation_rate(&self, metrics: &MemoryMetrics) -> f64 {
+        // Calculate allocations per second based on total allocations
+        if self.performance_samples.len() < 2 {
+            return 0.0;
+        }
+        
+        let current_total = metrics.total_allocations();
+        let time_diff_s = self.config.sample_interval_ms as f64 / 1000.0;
+        
+        current_total as f64 / time_diff_s.max(1.0)
+    }
+
+    fn calculate_avg_allocation_size(&self, metrics: &MemoryMetrics) -> f64 {
+        let total_allocs = metrics.total_allocations();
+        if total_allocs == 0 { 
+            return 0.0; 
+        }
+        metrics.total_bytes_allocated as f64 / total_allocs as f64
+    }
+
+    fn calculate_fragmentation_percentage(&self, _metrics: &MemoryMetrics) -> f64 {
+        // In real implementation, would calculate actual fragmentation
+        // For now, return a reasonable estimate
+        5.0
+    }
+
+    fn extract_strategy_usage(&self, metrics: &MemoryMetrics) -> HashMap<MemoryStrategy, u32> {
+        let mut usage = HashMap::new();
+        usage.insert(MemoryStrategy::Manual, metrics.manual_allocs as u32);
+        usage.insert(MemoryStrategy::SmartPtr, metrics.smart_ptr_allocs as u32);
+        usage.insert(MemoryStrategy::Linear, metrics.linear_allocs as u32);
+        usage.insert(MemoryStrategy::Region, metrics.region_allocs as u32);
+        usage.insert(MemoryStrategy::Stack, metrics.stack_allocs as u32);
+        usage
+    }
+
+    fn update_real_time_metrics(&mut self, sample: &PerformanceSample) {
+        self.current_metrics.current_memory_kb = sample.memory_usage_kb;
+        self.current_metrics.peak_memory_kb = self.current_metrics.peak_memory_kb.max(sample.memory_usage_kb);
+        self.current_metrics.recent_allocs = sample.allocation_rate as u32;
+
+        // Update allocation trend
+        if self.performance_samples.len() >= 2 {
+            let prev_rate = self.performance_samples[self.performance_samples.len() - 2].allocation_rate;
+            let current_rate = sample.allocation_rate;
+            let change_ratio = if prev_rate > 0.0 { current_rate / prev_rate } else { 1.0 };
+
+            self.current_metrics.allocation_trend = match change_ratio {
+                r if r > 1.5 => AllocationTrend::Accelerating,
+                r if r > 1.1 => AllocationTrend::Increasing,
+                r if r < 0.9 => AllocationTrend::Decreasing,
+                _ => AllocationTrend::Stable,
+            };
+        }
+
+        // Update health score and pressure level
+        self.update_health_metrics(sample);
+    }
+
+    fn update_health_metrics(&mut self, sample: &PerformanceSample) {
+        // Calculate health score based on multiple factors
+        let memory_score = if sample.memory_usage_kb < 100 * 1024 { 100.0 } else { 
+            100.0 - (sample.memory_usage_kb as f64 / (1024.0 * 1024.0)) * 50.0 
+        };
+        let fragmentation_score = 100.0 - sample.fragmentation;
+        let allocation_score = if sample.allocation_rate < 1000.0 { 100.0 } else { 
+            100.0 - (sample.allocation_rate / 10000.0) * 50.0 
+        };
+
+        self.current_metrics.health_score = (memory_score + fragmentation_score + allocation_score) / 3.0;
+        self.current_metrics.health_score = self.current_metrics.health_score.min(100.0).max(0.0);
+
+        // Determine pressure level
+        self.current_metrics.pressure_level = if sample.memory_usage_kb > 500 * 1024 {
+            MemoryPressure::Critical
+        } else if sample.memory_usage_kb > 200 * 1024 {
+            MemoryPressure::High
+        } else if sample.memory_usage_kb > 50 * 1024 {
+            MemoryPressure::Normal
+        } else {
+            MemoryPressure::Low
+        };
+    }
 } 

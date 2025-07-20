@@ -35,7 +35,7 @@ pub mod memory;
 pub mod runtime;
 
 pub use context::CraneliftContext;
-pub use memory::{BractMemoryManager, MemoryStrategy, MemoryAnnotation, parse_annotation, AllocationOptions, AllocationResult, LeakWarning, LeakSeverity, LeakType};
+pub use memory::{BractMemoryManager, MemoryStrategy, MemoryAnnotation, parse_annotation, AllocationOptions, AllocationResult, LeakWarning, LeakSeverity, LeakType, AlignmentHint, RegionOptimizationResult, AllocationHotspot, MemoryPressure, AllocationTrend};
 
 /// Cranelift code generator - produces native machine code with hybrid memory management
 pub struct CraneliftCodeGenerator {
