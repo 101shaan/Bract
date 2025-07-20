@@ -18,6 +18,88 @@ pub type SymbolId = u32;
 /// File identifier for source location tracking
 pub type FileId = usize;
 
+/// Memory Strategy for Bract's Hybrid Memory Management
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum MemoryStrategy {
+    /// Manual memory management - explicit malloc/free
+    Manual,
+    /// Smart pointer with reference counting (ARC)
+    SmartPtr,
+    /// Linear types - move semantics, single ownership
+    Linear,
+    /// Region-based allocation with deterministic cleanup
+    Region,
+    /// Stack allocation for short-lived values
+    Stack,
+    /// Inferred strategy (resolved during type checking)
+    Inferred,
+}
+
+impl MemoryStrategy {
+    /// Check if this strategy requires move semantics
+    pub fn requires_move(&self) -> bool {
+        matches!(self, MemoryStrategy::Linear)
+    }
+    
+    /// Check if this strategy allows copying
+    pub fn allows_copy(&self) -> bool {
+        matches!(self, MemoryStrategy::Stack | MemoryStrategy::SmartPtr)
+    }
+    
+    /// Get the allocation performance cost (lower is better)
+    pub fn allocation_cost(&self) -> u8 {
+        match self {
+            MemoryStrategy::Stack => 0,     // Zero cost - stack allocation
+            MemoryStrategy::Linear => 1,    // Move-only, minimal overhead
+            MemoryStrategy::Region => 2,    // Fast region allocation
+            MemoryStrategy::Manual => 3,    // Manual malloc overhead
+            MemoryStrategy::SmartPtr => 4,  // ARC overhead
+            MemoryStrategy::Inferred => 255, // Should never reach runtime
+        }
+    }
+}
+
+/// Ownership information for type checking and memory safety
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Ownership {
+    /// Owned value - can be moved
+    Owned,
+    /// Borrowed reference - read-only access
+    Borrowed,
+    /// Mutable borrowed reference - read-write access
+    MutBorr,
+    /// Shared reference counting (for SmartPtr strategy)
+    Shared,
+    /// Linear ownership - must be consumed exactly once
+    Linear,
+}
+
+impl Ownership {
+    /// Check if this ownership allows mutation
+    pub fn allows_mutation(&self) -> bool {
+        matches!(self, Ownership::Owned | Ownership::MutBorr)
+    }
+    
+    /// Check if this ownership can be copied
+    pub fn can_copy(&self) -> bool {
+        matches!(self, Ownership::Borrowed | Ownership::Shared)
+    }
+}
+
+/// Lifetime identifier for region analysis
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct LifetimeId(pub u32);
+
+impl LifetimeId {
+    pub fn new(id: u32) -> Self {
+        LifetimeId(id)
+    }
+    
+    pub fn static_lifetime() -> Self {
+        LifetimeId(0)
+    }
+}
+
 /// Source span for error reporting and debugging
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Span {
@@ -686,42 +768,47 @@ pub struct FieldPattern {
     pub span: Span,
 }
 
-/// Type system representation
+/// Type system representation with memory management integration
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {
-    /// Primitive types
+    /// Primitive types with memory strategy
     Primitive {
         kind: PrimitiveType,
+        memory_strategy: MemoryStrategy,
         span: Span,
     },
     
-    /// Path types (user-defined types)
+    /// Path types (user-defined types) with memory strategy
     Path {
         segments: Vec<InternedString>,
         generics: Vec<Type>,
+        memory_strategy: MemoryStrategy,
         span: Span,
     },
     
-    /// Array types [T; N]
+    /// Array types [T; N] with memory strategy
     Array {
         element_type: Box<Type>,
         size: Box<Expr>, // Constant expression
+        memory_strategy: MemoryStrategy,
         span: Span,
     },
     
-    /// Slice types &[T]
+    /// Slice types &[T] with lifetime tracking
     Slice {
         element_type: Box<Type>,
+        lifetime: Option<LifetimeId>,
         span: Span,
     },
     
-    /// Tuple types
+    /// Tuple types with memory strategy
     Tuple {
         types: Vec<Type>,
+        memory_strategy: MemoryStrategy,
         span: Span,
     },
     
-    /// Function types
+    /// Function types with ownership annotations
     Function {
         params: Vec<Type>,
         return_type: Box<Type>,
@@ -729,28 +816,33 @@ pub enum Type {
         span: Span,
     },
     
-    /// Reference types
+    /// Reference types with lifetime and ownership
     Reference {
         is_mutable: bool,
         target_type: Box<Type>,
+        lifetime: Option<LifetimeId>,
+        ownership: Ownership,
         span: Span,
     },
     
-    /// Pointer types
+    /// Pointer types with memory strategy
     Pointer {
         is_mutable: bool,
         target_type: Box<Type>,
+        memory_strategy: MemoryStrategy,
         span: Span,
     },
     
-    /// Generic type parameters
+    /// Generic type parameters with bounds
     Generic {
         name: InternedString,
+        bounds: Vec<TypeBound>,
         span: Span,
     },
     
-    /// Inferred types (type holes)
+    /// Inferred types (type holes) with constraints
     Inferred {
+        constraints: Vec<TypeConstraint>,
         span: Span,
     },
     
@@ -758,6 +850,36 @@ pub enum Type {
     Never {
         span: Span,
     },
+}
+
+/// Type bounds for generic parameters
+#[derive(Debug, Clone, PartialEq)]
+pub enum TypeBound {
+    /// Memory strategy constraint
+    MemoryStrategy(MemoryStrategy),
+    /// Trait constraint
+    Trait(Vec<InternedString>),
+    /// Lifetime constraint
+    Lifetime(LifetimeId),
+    /// Size constraint (for performance guarantees)
+    MaxSize(u64),
+}
+
+/// Type constraints for inference
+#[derive(Debug, Clone, PartialEq)]
+pub enum TypeConstraint {
+    /// Must be compatible with another type
+    CompatibleWith(Type),
+    /// Must support memory strategy
+    SupportsStrategy(MemoryStrategy),
+    /// Must have specific ownership
+    HasOwnership(Ownership),
+    /// Must fit within lifetime
+    WithinLifetime(LifetimeId),
+    /// Must be copyable
+    Copyable,
+    /// Must be movable
+    Movable,
 }
 
 /// Primitive type kinds
@@ -953,6 +1075,91 @@ impl Type {
     pub fn is_reference(&self) -> bool {
         matches!(self, Type::Reference { .. })
     }
+    
+    /// Get the memory strategy for types that have one
+    pub fn memory_strategy(&self) -> Option<MemoryStrategy> {
+        match self {
+            Type::Primitive { memory_strategy, .. } => Some(*memory_strategy),
+            Type::Path { memory_strategy, .. } => Some(*memory_strategy),
+            Type::Array { memory_strategy, .. } => Some(*memory_strategy),
+            Type::Tuple { memory_strategy, .. } => Some(*memory_strategy),
+            Type::Pointer { memory_strategy, .. } => Some(*memory_strategy),
+            _ => None,
+        }
+    }
+    
+    /// Check if type requires move semantics
+    pub fn requires_move(&self) -> bool {
+        self.memory_strategy()
+            .map(|s| s.requires_move())
+            .unwrap_or(false)
+    }
+    
+    /// Check if type allows copying
+    pub fn allows_copy(&self) -> bool {
+        self.memory_strategy()
+            .map(|s| s.allows_copy())
+            .unwrap_or(true)
+    }
+    
+    /// Get ownership for reference types
+    pub fn ownership(&self) -> Option<Ownership> {
+        match self {
+            Type::Reference { ownership, .. } => Some(ownership.clone()),
+            _ => None,
+        }
+    }
+    
+    /// Get lifetime for types that have one
+    pub fn lifetime(&self) -> Option<LifetimeId> {
+        match self {
+            Type::Reference { lifetime, .. } => *lifetime,
+            Type::Slice { lifetime, .. } => *lifetime,
+            _ => None,
+        }
+    }
+    
+    /// Check if type is linear (must be consumed exactly once)
+    pub fn is_linear(&self) -> bool {
+        matches!(self.memory_strategy(), Some(MemoryStrategy::Linear))
+    }
+    
+    /// Get allocation cost for performance analysis
+    pub fn allocation_cost(&self) -> u8 {
+        self.memory_strategy()
+            .map(|s| s.allocation_cost())
+            .unwrap_or(0)
+    }
+    
+    /// Create a stack-allocated primitive type
+    pub fn stack_primitive(kind: PrimitiveType, span: Span) -> Self {
+        Type::Primitive {
+            kind,
+            memory_strategy: MemoryStrategy::Stack,
+            span,
+        }
+    }
+    
+    /// Create a linear type for move semantics
+    pub fn linear_type(segments: Vec<InternedString>, span: Span) -> Self {
+        Type::Path {
+            segments,
+            generics: Vec::new(),
+            memory_strategy: MemoryStrategy::Linear,
+            span,
+        }
+    }
+    
+    /// Create a borrowed reference
+    pub fn borrowed_ref(target_type: Type, is_mutable: bool, lifetime: Option<LifetimeId>, span: Span) -> Self {
+        Type::Reference {
+            is_mutable,
+            target_type: Box::new(target_type),
+            lifetime,
+            ownership: if is_mutable { Ownership::MutBorr } else { Ownership::Borrowed },
+            span,
+        }
+    }
 }
 
 impl Pattern {
@@ -1127,16 +1334,19 @@ mod tests {
         // Primitive type
         let prim_type = Type::Primitive {
             kind: PrimitiveType::I32,
-            span,
+            memory_strategy: MemoryStrategy::Inferred,
+            span: Span::new(Position::start(0), Position::start(0)),
         };
         assert!(prim_type.is_primitive());
         assert!(!prim_type.is_reference());
         
         // Reference type
         let ref_type = Type::Reference {
+            target_type: Box::new(prim_type),
             is_mutable: false,
-            target_type: Box::new(prim_type.clone()),
-            span,
+            lifetime: None,
+            ownership: Ownership::Borrowed,
+            span: Span::new(Position::start(0), Position::start(0)),
         };
         assert!(!ref_type.is_primitive());
         assert!(ref_type.is_reference());
