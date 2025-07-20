@@ -1,7 +1,7 @@
 //! Main parser implementation for the Bract programming language
 
 use crate::lexer::{Lexer, Token, TokenType, Position};
-use crate::ast::{Module, Item, Expr, Stmt, Span, Visibility, Parameter, InternedString, Pattern, Type};
+use crate::ast::{Module, Item, Expr, Stmt, Span, Visibility, Parameter, InternedString, Pattern, Type, MemoryStrategy};
 use super::error::{ParseError, ParseResult};
 use std::collections::HashMap;
 
@@ -201,6 +201,17 @@ impl<'a> Parser<'a> {
         } else {
             Visibility::Private
         };
+        
+        // Skip annotations for now (parse but don't use them yet)
+        while self.check(&TokenType::At) {
+            // Skip annotation - for now just advance past it
+            while !self.is_at_end() && !self.check(&TokenType::Fn) && !self.check(&TokenType::Struct) 
+                && !self.check(&TokenType::Enum) && !self.check(&TokenType::Type) 
+                && !self.check(&TokenType::Const) && !self.check(&TokenType::Mod) 
+                && !self.check(&TokenType::Impl) && !self.check(&TokenType::Use) {
+                self.advance()?;
+            }
+        }
         
         if let Some(token) = &self.current_token {
             match &token.token_type {
@@ -915,6 +926,7 @@ impl<'a> Parser<'a> {
                     let self_type = Type::Path {
                         segments: vec![self.interner.intern("Self")],
                         generics: Vec::new(),
+                        memory_strategy: MemoryStrategy::Inferred,
                         span: Span::new(start_pos, self.current_position()),
                     };
                     Ok((pattern, Some(self_type)))
@@ -940,8 +952,11 @@ impl<'a> Parser<'a> {
                                     target_type: Box::new(Type::Path {
                                         segments: vec![self.interner.intern("Self")],
                                         generics: Vec::new(),
+                                        memory_strategy: MemoryStrategy::Inferred,
                                         span: Span::new(start_pos, self.current_position()),
                                     }),
+                                    lifetime: None,
+                                    ownership: crate::ast::Ownership::Borrowed,
                                     span: Span::new(start_pos, self.current_position()),
                                 };
                                 Ok((pattern, Some(self_type)))

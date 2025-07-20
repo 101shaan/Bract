@@ -228,7 +228,7 @@ impl SemanticAnalyzer {
                 Ok(expression_types)
             }
             Err(_) => {
-                let errors = type_checker.errors().to_vec();
+                let errors = type_checker.get_all_errors().to_vec();
                 Err(errors)
             }
         }

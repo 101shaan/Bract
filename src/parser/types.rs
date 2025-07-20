@@ -13,7 +13,7 @@
 //! - Inferred types _
 
 use crate::lexer::{TokenType, position::Position};
-use crate::ast::{Type, Span, PrimitiveType};
+use crate::ast::{Type, Span, PrimitiveType, MemoryStrategy, Ownership};
 use super::parser::Parser;
 use super::error::{ParseError, ParseResult};
 
@@ -55,6 +55,7 @@ impl<'a> Parser<'a> {
                     self.advance()?;
                     let end_pos = self.current_position();
                     Ok(Type::Inferred {
+                        constraints: Vec::new(),
                         span: Span::new(start_pos, end_pos),
                     })
                 }
@@ -116,6 +117,7 @@ impl<'a> Parser<'a> {
             // Default to unit type
             Box::new(Type::Tuple {
                 types: Vec::new(),
+                memory_strategy: MemoryStrategy::Inferred,
                 span: Span::new(start_pos, start_pos),
             })
         };
@@ -139,6 +141,8 @@ impl<'a> Parser<'a> {
         Ok(Type::Reference {
             is_mutable,
             target_type,
+            lifetime: None,
+            ownership: Ownership::Borrowed,
             span: Span::new(start_pos, end_pos),
         })
     }
@@ -165,6 +169,7 @@ impl<'a> Parser<'a> {
         Ok(Type::Pointer {
             is_mutable,
             target_type,
+            memory_strategy: MemoryStrategy::Manual,
             span: Span::new(start_pos, end_pos),
         })
     }
@@ -191,6 +196,7 @@ impl<'a> Parser<'a> {
         
         Ok(Type::Tuple {
             types,
+            memory_strategy: MemoryStrategy::Inferred,
             span: Span::new(start_pos, end_pos),
         })
     }
@@ -210,6 +216,7 @@ impl<'a> Parser<'a> {
             Ok(Type::Array {
                 element_type,
                 size,
+                memory_strategy: MemoryStrategy::Inferred,
                 span: Span::new(start_pos, end_pos),
             })
         } else {
@@ -252,6 +259,7 @@ impl<'a> Parser<'a> {
             let end_pos = self.current_position();
             Ok(Type::Primitive {
                 kind: prim,
+                memory_strategy: MemoryStrategy::Inferred,
                 span: Span::new(start_pos, end_pos),
             })
         } else {
@@ -324,6 +332,7 @@ impl<'a> Parser<'a> {
         Ok(Type::Path {
             segments,
             generics,
+            memory_strategy: MemoryStrategy::Inferred,
             span: Span::new(start_pos, end_pos),
         })
     }

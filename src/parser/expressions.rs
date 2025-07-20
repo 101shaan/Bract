@@ -661,7 +661,8 @@ impl<'a> Parser<'a> {
                         span,
                     })
                 }
-                _ => Err(ParseError::ExpectedExpression {
+                _ => Err(ParseError::InvalidSyntax {
+                    message: "Expected expression".to_string(),
                     position: start_pos,
                 }),
             }
