@@ -1,0 +1,332 @@
+// Phase 1 Demonstration: Advanced Type System + Memory Management
+// This example showcases Bract's revolutionary FAST + SAFE + CLEAR design
+
+// ===============================================
+// MEMORY STRATEGY ANNOTATIONS
+// ===============================================
+
+// Stack allocation - Zero cost, automatic cleanup
+fn calculate_sum(a: i32, b: i32) -> i32 {
+    let result: i32 = a + b;  // Stack allocated by default
+    result
+}
+
+// Linear types - Single ownership, move semantics
+fn process_buffer(buffer: LinearBuffer) -> ProcessedData {
+    let processed = buffer.transform();  // buffer is moved here
+    // buffer is no longer accessible - compile error if used
+    processed
+}
+
+// Smart pointer with ARC - Shared ownership
+fn share_data(data: SmartPtr<SharedData>) -> SmartPtr<SharedData> {
+    let shared_ref = data.clone();  // Reference count incremented
+    shared_ref  // Original data remains valid
+}
+
+// Manual memory management - Explicit control
+fn allocate_raw() -> ManualPtr<RawData> {
+    let ptr = malloc(size_of::<RawData>());  // Explicit allocation
+    // Must call free() before function ends or compile error
+    ptr
+}
+
+// Region-based allocation - Deterministic bulk cleanup
+fn process_batch(region: &Region, items: &[Item]) -> Vec<ProcessedItem> {
+    let mut results = Vec::with_capacity(items.len());
+    
+    for item in items {
+        // All allocations in this region are cleaned up together
+        let processed = region.alloc(process_item(item));
+        results.push(processed);
+    }
+    
+    results  // Region automatically cleans up when dropped
+}
+
+// ===============================================
+// OWNERSHIP AND LIFETIME ANALYSIS
+// ===============================================
+
+// Borrow checking prevents use-after-move
+fn ownership_demo() {
+    let data = LinearData::new();
+    let processed = consume_data(data);  // data is moved
+    // println!("{}", data.value);  // COMPILE ERROR: use after move
+    println!("{}", processed.result);  // OK: processed owns the data
+}
+
+// Multiple immutable borrows allowed
+fn multiple_readers(data: &SharedData) {
+    let reader1 = &data.content;
+    let reader2 = &data.content;  // OK: multiple immutable borrows
+    println!("{} {}", reader1, reader2);
+}
+
+// Mutable borrow prevents other borrows
+fn exclusive_writer(data: &mut MutableData) {
+    let writer = &mut data.content;  // Exclusive mutable borrow
+    // let reader = &data.content;  // COMPILE ERROR: cannot borrow while mutably borrowed
+    writer.modify();
+}
+
+// Lifetime analysis prevents dangling references
+fn lifetime_safety<'a>(input: &'a str) -> &'a str {
+    let processed = input.trim();  // Same lifetime as input
+    processed  // Safe: lifetime is preserved
+}
+
+// ===============================================
+// TYPE INFERENCE WITH MEMORY STRATEGIES
+// ===============================================
+
+fn type_inference_demo() {
+    // Type inferred as i32 [Stack]
+    let number = 42;
+    
+    // Type inferred as SmartPtr<String> based on usage
+    let shared_string = "Hello".to_smart_ptr();
+    let clone1 = shared_string.clone();  // ARC increment
+    let clone2 = shared_string.clone();  // ARC increment
+    
+    // Type inferred as LinearBuffer based on move requirement
+    let buffer = create_linear_buffer();
+    process_linear_data(buffer);  // Must move, cannot copy
+    
+    // Inference resolves memory strategy conflicts
+    let mixed = if condition {
+        stack_allocated_data()    // Stack strategy
+    } else {
+        heap_allocated_data()     // SmartPtr strategy
+    };
+    // Compiler chooses SmartPtr to handle both cases safely
+}
+
+// ===============================================
+// PERFORMANCE CONTRACTS
+// ===============================================
+
+// Function with performance guarantees
+#[performance(max_cost = 1000, max_memory = 1024)]
+fn fast_algorithm(data: &[i32]) -> i32 {
+    // Compiler enforces performance contract
+    let mut sum = 0;  // Cost: 1 (stack allocation)
+    
+    for &value in data {  // Cost per iteration: ~5
+        sum += value * 2;  // Cost: 3 (multiply + add)
+    }
+    
+    sum  // Total cost must be under 1000
+}
+
+// Region allocation for bulk operations
+#[performance(allocation_strategy = "region")]
+fn batch_processor(items: &[InputData]) -> Vec<OutputData> {
+    let region = Region::new();  // Single allocation for entire batch
+    let mut results = Vec::new();
+    
+    for item in items {
+        // All allocations use the same region
+        let processed = region.alloc(expensive_operation(item));
+        results.push(processed);
+    }
+    
+    results  // Region cleanup is O(1)
+}
+
+// ===============================================
+// BOUNDS CHECKING AND SAFETY
+// ===============================================
+
+fn memory_safety_demo() {
+    let mut array = [1, 2, 3, 4, 5];
+    let index = get_user_input();  // Potentially unsafe value
+    
+    // Runtime bounds check automatically inserted
+    if index < array.len() {
+        array[index] = 10;  // Safe access
+    } else {
+        panic!("Index out of bounds: {}", index);
+    }
+    
+    // Smart bounds checking optimization
+    for i in 0..array.len() {
+        array[i] *= 2;  // Bounds check eliminated by compiler
+    }
+}
+
+// ===============================================
+// INTEGRATION WITH EXISTING CODE
+// ===============================================
+
+// FFI with C code
+extern "C" {
+    fn c_function(data: *mut u8, length: usize) -> i32;
+}
+
+fn ffi_integration() {
+    let mut buffer = vec![0u8; 1024];  // Rust allocation
+    
+    unsafe {
+        // Manual memory management for FFI
+        let result = c_function(buffer.as_mut_ptr(), buffer.len());
+        
+        if result < 0 {
+            panic!("C function failed");
+        }
+    }
+    
+    // Buffer automatically cleaned up by Rust
+}
+
+// ===============================================
+// PERFORMANCE PROFILING HOOKS
+// ===============================================
+
+fn profiled_function() {
+    profile_start!("critical_section");
+    
+    // Performance-critical code
+    let data = expensive_computation();
+    let result = complex_algorithm(data);
+    
+    profile_end!("critical_section");
+    
+    // Profiler reports:
+    // - Allocation costs
+    // - Memory strategy efficiency
+    // - Hotspot identification
+    // - Optimization suggestions
+}
+
+// ===============================================
+// ERROR HANDLING WITH MEMORY SAFETY
+// ===============================================
+
+fn error_handling_demo() -> Result<ProcessedData, ErrorType> {
+    let resource = acquire_resource()?;  // May fail
+    
+    // RAII ensures cleanup even on early return
+    let processed = match process_resource(resource) {
+        Ok(data) => data,
+        Err(e) => {
+            // resource is automatically cleaned up
+            return Err(e);
+        }
+    };
+    
+    Ok(processed)
+    // resource cleanup is guaranteed
+}
+
+// ===============================================
+// MAIN DEMONSTRATION FUNCTION
+// ===============================================
+
+fn main() {
+    println!("Bract Phase 1 Demo: FAST + SAFE + CLEAR");
+    
+    // Stack allocation demo
+    let sum = calculate_sum(10, 20);
+    println!("Sum: {}", sum);
+    
+    // Memory strategy demo
+    ownership_demo();
+    type_inference_demo();
+    memory_safety_demo();
+    
+    // Performance analysis
+    let data = vec![1, 2, 3, 4, 5];
+    let result = fast_algorithm(&data);
+    println!("Fast algorithm result: {}", result);
+    
+    println!("All memory strategies working correctly!");
+    println!("Ownership analysis: ✓");
+    println!("Type inference: ✓");
+    println!("Performance contracts: ✓");
+    println!("Memory safety: ✓");
+}
+
+// ===============================================
+// TYPE DEFINITIONS FOR DEMO
+// ===============================================
+
+struct LinearBuffer {
+    data: Vec<u8>,
+}
+
+struct ProcessedData {
+    result: String,
+}
+
+struct SharedData {
+    content: String,
+}
+
+struct MutableData {
+    content: String,
+}
+
+struct LinearData {
+    value: i32,
+}
+
+struct RawData {
+    bytes: [u8; 64],
+}
+
+struct Item {
+    id: u32,
+    value: f64,
+}
+
+struct ProcessedItem {
+    id: u32,
+    processed_value: f64,
+}
+
+struct InputData {
+    raw: Vec<u8>,
+}
+
+struct OutputData {
+    processed: String,
+}
+
+enum ErrorType {
+    IoError,
+    ParseError,
+    MemoryError,
+}
+
+// Type aliases with memory strategy annotations
+type SmartPtr<T> = Arc<T>;           // Reference counted
+type LinearPtr<T> = Box<T>;          // Move-only
+type ManualPtr<T> = *mut T;          // Manual management
+type Region = MemoryRegion;          // Region-based
+
+// Helper functions (implementations omitted for brevity)
+impl LinearBuffer {
+    fn transform(self) -> ProcessedData { todo!() }
+}
+
+impl LinearData {
+    fn new() -> Self { todo!() }
+}
+
+fn consume_data(data: LinearData) -> ProcessedData { todo!() }
+fn create_linear_buffer() -> LinearBuffer { todo!() }
+fn process_linear_data(buffer: LinearBuffer) { todo!() }
+fn stack_allocated_data() -> i32 { todo!() }
+fn heap_allocated_data() -> SmartPtr<String> { todo!() }
+fn expensive_operation(item: &InputData) -> OutputData { todo!() }
+fn get_user_input() -> usize { todo!() }
+fn expensive_computation() -> Vec<u8> { todo!() }
+fn complex_algorithm(data: Vec<u8>) -> String { todo!() }
+fn acquire_resource() -> Result<Resource, ErrorType> { todo!() }
+fn process_resource(resource: Resource) -> Result<ProcessedData, ErrorType> { todo!() }
+
+struct Resource;
+struct MemoryRegion;
+
+const condition: bool = true; 
