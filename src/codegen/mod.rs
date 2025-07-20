@@ -1,28 +1,71 @@
-//! Code Generation Module for Bract
+//! Code generation pipeline for Bract language
 //!
-//! This module handles the translation of Bract AST to various target languages.
-//! Initially targeting C for rapid development and bootstrapping.
-//!
-//! Architecture:
-//! - CodegenContext: Manages symbol tables, type mapping, and generation state
-//! - CCodeBuilder: Efficient C code generation with proper formatting
-//! - Target-specific generators: expressions, statements, items
-//! - Runtime integration: memory management, error handling, standard library
+//! This module orchestrates the complete compilation pipeline:
+//! - AST → Bract IR (with memory management preservation)
+//! - Bract IR optimizations
+//! - Bract IR → Cranelift IR
+//! - Final code generation
 
-use crate::ast::*;
-use crate::semantic::SymbolTable;
-use std::collections::HashMap;
-// Removed unused import
-
+pub mod build;
 pub mod c_gen;
+pub mod cranelift;
 pub mod expressions;
-pub mod statements;  
 pub mod items;
 pub mod runtime;
-pub mod build;
-pub mod cranelift;  // NEW: Native code generation
+pub mod statements;
 
+// New modules for Phase 1 completion
+pub mod bract_ir;    // Bract Intermediate Representation
+pub mod lowering;    // Lowering pipeline: AST → BIR → Cranelift IR
+
+// Re-exports for convenience
+pub use bract_ir::{
+    BIRModule, BIRFunction, BIRType, BIRValue, BIROp, BIRInstruction,
+    PerformanceContract, PerformanceProfile
+};
+pub use lowering::{LoweringPipeline, LoweringError, LoweringResult};
 pub use c_gen::CCodeGenerator;
+
+use crate::ast::{Module, SymbolId};
+use crate::semantic::types::TypeChecker;
+use crate::semantic::symbols::SymbolTable;
+use crate::parser::StringInterner;
+use std::collections::HashMap;
+
+/// Complete code generation orchestrator
+pub struct CodegenPipeline {
+    /// Lowering pipeline for AST → Cranelift IR
+    lowering_pipeline: lowering::LoweringPipeline,
+    /// Cranelift code generator
+    cranelift_generator: cranelift::CraneliftCodeGenerator,
+}
+
+impl CodegenPipeline {
+    /// Create a new code generation pipeline
+    pub fn new(symbol_table: SymbolTable, interner: StringInterner) -> Result<Self, String> {
+        let type_checker = TypeChecker::new(symbol_table.clone());
+        let lowering_pipeline = lowering::LoweringPipeline::new(type_checker);
+        let cranelift_generator = cranelift::CraneliftCodeGenerator::new(symbol_table, interner)
+            .map_err(|e| format!("Failed to create Cranelift generator: {:?}", e))?;
+        
+        Ok(Self {
+            lowering_pipeline,
+            cranelift_generator,
+        })
+    }
+    
+    /// Compile a module to machine code
+    pub fn compile_module(&mut self, module: &Module) -> Result<Vec<u8>, String> {
+        // Stage 1: Lower AST to Cranelift IR with memory management
+        let _cranelift_functions = self.lowering_pipeline.lower_module(module)
+            .map_err(|e| format!("Lowering error: {:?}", e))?;
+        
+        // Stage 2: Generate machine code
+        // TODO: Integrate lowered IR with existing Cranelift generator
+        
+        Ok(vec![]) // Placeholder
+    }
+}
 
 /// Result type for code generation operations
 pub type CodegenResult<T> = Result<T, CodegenError>;
