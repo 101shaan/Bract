@@ -479,9 +479,10 @@ mod tests {
 
         let name = InternedString::new(42);
         let params = vec![];
-        let return_type = Some(Type::Primitive { 
-            kind: PrimitiveType::I32, 
-            span: dummy_span() 
+        let return_type = Some(Type::Primitive {
+            kind: PrimitiveType::I32,
+            memory_strategy: MemoryStrategy::Inferred,
+            span: dummy_span(),
         });
 
         let signature = generator.generate_function_signature(&name, &params, &return_type).unwrap();
@@ -497,16 +498,18 @@ mod tests {
         let mut metrics = CodegenMetrics::new();
         let generator = ItemGenerator::new(&mut context, &mut metrics);
 
-        let int_type = Type::Primitive { 
-            kind: PrimitiveType::I32, 
-            span: dummy_span() 
+        let int_type = Type::Primitive {
+            kind: PrimitiveType::I32,
+            memory_strategy: MemoryStrategy::Inferred,
+            span: dummy_span(),
         };
         let type_name = generator.generate_type_name(&int_type).unwrap();
         assert_eq!(type_name, "int32_t");
 
-        let str_type = Type::Primitive { 
-            kind: PrimitiveType::Str, 
-            span: dummy_span() 
+        let str_type = Type::Primitive {
+            kind: PrimitiveType::Str,
+            memory_strategy: MemoryStrategy::Inferred,
+            span: dummy_span(),
         };
         let type_name = generator.generate_type_name(&str_type).unwrap();
         assert_eq!(type_name, "prism_str_t");
