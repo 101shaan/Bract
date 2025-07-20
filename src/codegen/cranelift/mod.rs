@@ -35,7 +35,7 @@ pub mod memory;
 pub mod runtime;
 
 pub use context::CraneliftContext;
-pub use memory::{BractMemoryManager, MemoryStrategy, MemoryAnnotation, parse_annotation, AllocationOptions, AllocationResult};
+pub use memory::{BractMemoryManager, MemoryStrategy, MemoryAnnotation, parse_annotation, AllocationOptions, AllocationResult, LeakWarning, LeakSeverity, LeakType};
 
 /// Cranelift code generator - produces native machine code with hybrid memory management
 pub struct CraneliftCodeGenerator {
@@ -255,33 +255,32 @@ impl CraneliftCodeGenerator {
         self.memory_manager.check_linear_usage(value, "codegen_usage_check")
     }
     
-    /// **NEW**: Generate bounds checking code (TODO: implement)
+    /// **NEW**: Generate bounds checking code with optimal performance
     pub fn generate_bounds_check(
-        &mut self,
-        _builder: &mut FunctionBuilder,
-        _ptr: cranelift::prelude::Value,
-        _size: cranelift::prelude::Value,
-        _access_size: u32,
+        &self,
+        builder: &mut FunctionBuilder,
+        ptr: cranelift::prelude::Value,
+        size: cranelift::prelude::Value,
+        access_size: u32,
     ) -> CodegenResult<()> {
-        // TODO: Implement bounds checking
-        Ok(())
+        self.memory_manager.generate_bounds_check(builder, ptr, size, access_size)
     }
     
     /// **NEW**: Increment smart pointer reference count
-    pub fn smart_pointer_inc_ref(
-        &mut self, 
-        builder: &mut FunctionBuilder, 
-        ptr: cranelift::prelude::Value
+        pub fn smart_pointer_inc_ref(
+        &mut self,
+        _builder: &mut FunctionBuilder,
+        _ptr: cranelift::prelude::Value
     ) -> CodegenResult<()> {
         // TODO: Implement smart pointer increment
         Ok(())
     }
     
     /// **NEW**: Decrement smart pointer reference count
-    pub fn smart_pointer_dec_ref(
-        &mut self, 
-        builder: &mut FunctionBuilder, 
-        ptr: cranelift::prelude::Value
+        pub fn smart_pointer_dec_ref(
+        &mut self,
+        _builder: &mut FunctionBuilder,
+        _ptr: cranelift::prelude::Value
     ) -> CodegenResult<()> {
         // TODO: Implement smart pointer decrement  
         Ok(())
