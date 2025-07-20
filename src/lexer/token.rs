@@ -116,6 +116,7 @@ pub enum TokenType {
     Dot,            // .
     Semicolon,      // ;
     DotDot,         // ..
+    At,             // @ (for memory annotations)
     
     // Comments (usually filtered out, but kept for documentation tools)
     LineComment(String),
@@ -357,6 +358,7 @@ impl fmt::Display for TokenType {
             TokenType::Dot => write!(f, "."),
             TokenType::Semicolon => write!(f, ";"),
             TokenType::DotDot => write!(f, ".."),
+            TokenType::At => write!(f, "@"),
             
             // Comments
             TokenType::LineComment(s) => write!(f, "LineComment({})", s),
