@@ -700,6 +700,7 @@ mod tests {
             params: Vec::new(),
             return_type: Some(Type::Primitive {
                 kind: PrimitiveType::I32,
+                memory_strategy: MemoryStrategy::Inferred,
                 span: dummy_span(),
             }),
             body: Some(Expr::Literal {
@@ -733,6 +734,7 @@ mod tests {
                     name: InternedString::new(3),
                     field_type: Type::Primitive {
                         kind: PrimitiveType::I32,
+                        memory_strategy: MemoryStrategy::Inferred,
                         span: dummy_span(),
                     },
                     span: dummy_span(),
@@ -752,6 +754,7 @@ mod tests {
         
         let int_type = Type::Primitive {
             kind: PrimitiveType::I32,
+            memory_strategy: MemoryStrategy::Inferred,
             span: dummy_span(),
         };
         
@@ -759,6 +762,7 @@ mod tests {
         
         let float_type = Type::Primitive {
             kind: PrimitiveType::F64,
+            memory_strategy: MemoryStrategy::Inferred,
             span: dummy_span(),
         };
         
@@ -776,6 +780,7 @@ mod tests {
             target_type: Type::Path {
                 segments: vec![InternedString::new(10)], // "MyStruct"
                 generics: Vec::new(),
+                memory_strategy: MemoryStrategy::Inferred,
                 span: dummy_span(),
             },
             trait_ref: None,
@@ -788,6 +793,7 @@ mod tests {
                     return_type: Some(Type::Path {
                         segments: vec![InternedString::new(10)],
                         generics: Vec::new(),
+                        memory_strategy: MemoryStrategy::Inferred,
                         span: dummy_span(),
                     }),
                     body: Some(Expr::Literal {
@@ -805,6 +811,7 @@ mod tests {
                     name: InternedString::new(12), // "DEFAULT_VALUE"
                     type_annotation: Type::Primitive {
                         kind: PrimitiveType::I32,
+                        memory_strategy: MemoryStrategy::Inferred,
                         span: dummy_span(),
                     },
                     value: Some(Expr::Literal {
