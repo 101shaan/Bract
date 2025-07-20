@@ -1,455 +1,1059 @@
-# Bract Language Specification (v0.1 – Early Draft)
+# Bract Language Specification
 
-> **Status:** Draft for community review.  Out-of-date sections are marked ⓘ and will be revised as the implementation evolves.  Corrections and PRs welcome.
+**Version 0.2.0** - Phase 1 Complete: Revolutionary Type System & Memory Management
 
-Bract is a _statically-typed, ahead-of-time (AOT) compiled_ systems programming language focused on blazing-fast builds, predictable performance, and _memory-safety without a garbage collector_.  Its design draws inspiration from C, Rust, Swift, and ML languages, while maintaining a syntax that reads naturally to programmers coming from modern C-style languages.
+## Vision
 
-This document is the **normative reference** for the language—tooling, compilers, and linters _must_ follow it.  Examples are **non-normative** and shown in • **bold monospace** blocks.
+**Bract delivers C-level performance with Rust-level safety through revolutionary hybrid memory management and contractual performance guarantees.**
 
----
+## Table of Contents
 
-## Contents
+1. [Language Philosophy](#1-language-philosophy)
+2. [Type System](#2-type-system)
+3. [Memory Management](#3-memory-management)
+4. [Ownership and Lifetimes](#4-ownership-and-lifetimes)
+5. [Performance Contracts](#5-performance-contracts)
+6. [Syntax Reference](#6-syntax-reference)
+7. [Standard Library](#7-standard-library)
+8. [Compilation Model](#8-compilation-model)
 
-1.  [Lexical Structure](#lexical-structure)
-2.  [Syntactic Grammar](#syntactic-grammar)
-3.  [Types & Type System](#types--type-system)
-4.  [Memory Model](#memory-model)
-5.  [Variables, Bindings, & Constants](#variables-bindings--constants)
-6.  [Functions & Closures](#functions--closures)
-7.  [Statements & Control Flow](#statements--control-flow)
-8.  [Expressions & Operators](#expressions--operators)
-9.  [Data Declarations](#data-declarations)
-10. [Pattern Matching](#pattern-matching)
-11. [Modules & Packages](#modules--packages)
-12. [Error Handling](#error-handling)
-13. [Concurrency & Atomics](#concurrency--atomics)
-14. [Attributes & Metadata](#attributes--metadata)
-15. [Toolchain & Compilation Model](#toolchain--compilation-model)
-16. [Standard Library Overview](#standard-library-overview)
-17. [Future Directions](#future-directions)
-18. [Appendix A: Complete Token Grammar (EBNF)](#appendix-a-complete-token-grammar-ebnf)
-19. [Appendix B: Operator Precedence Table](#appendix-b-operator-precedence-table)
+## 1. Language Philosophy
 
----
+### Core Principles
 
-<a name="lexical-structure"></a>
-## 1. Lexical Structure
+1. **FAST**: Performance is a contract, not a gamble
+   - Zero-overhead abstractions
+   - Predictable execution costs
+   - Compile-time performance verification
 
-### 1.1 Source Encoding
-Bract source files **must** be valid _UTF-8_.  The compiler rejects any ill-formed sequences.
+2. **SAFE**: Memory safety by construction
+   - Ownership and lifetime analysis
+   - Bounds checking with optimization
+   - Linear type safety
 
-### 1.2 Line Terminators
-Line terminators are `\u000A` LF (`\n`) or `\u000D` CRLF (`\r\n`).  They are interchangeable outside of string literals.
+3. **CLEAR**: Exceptional developer experience
+   - Actionable error messages
+   - Performance insights
+   - Optimization guidance
 
-### 1.3 Whitespace & Semicolon Elision
-Whitespace (space, tab, line terminator, FF) separates tokens.  **Semicolons** act as statement separators but _may be elided_ where a newline _unambiguously_ ends a statement (same rule as Go).  The lexer inserts a virtual semicolon at newline boundaries when the next token cannot be parsed as part of the current statement.
+### Design Goals
 
-### 1.4 Comments
-| Kind       | Introducer | Terminator | Nestable | Emits Doc? |
-|------------|-----------|-----------|----------|------------|
-| Line       | `//`      | end-of-line| —        | No |
-| Block      | `/*`      | `*/`      | **Yes**  | No |
-| Doc line   | `///`     | EOL       | —        | **Yes** |
-| Doc block  | `/**`     | `*/`      | Yes      | **Yes** |
+- **Predictable Performance**: Every operation has known cost bounds
+- **Memory Safety**: Eliminate use-after-free, double-free, buffer overflows
+- **Zero-Cost Abstractions**: High-level features compile to optimal code
+- **Explicit Control**: Developers choose memory strategies based on needs
 
-Doc comments become Markdown-based documentation emitted by tooling.
+## 2. Type System
 
-### 1.5 Identifiers
-```
-identifier  ::= IdentStart IdentContinue*
-IdentStart  ::= XID_Start | '_'
-IdentContinue ::= XID_Continue
-```
-Unicode is allowed, but mixing scripts in a single identifier is **warned** by default lints.
+### 2.1 Primitive Types with Memory Strategies
 
-### 1.6 Keywords
-```
-abort break box const continue do else enum extern false fn for if impl in let loop match mod move mut pub return struct true type use while
-```
-`async`, `await`, `trait`, `try` are **reserved** for future use.
+Every type in Bract has an associated memory strategy:
 
-### 1.7 Literals
-* **Integer:** `0`, `42`, `0xFF`, `0b1010`, suffixed (`123_u16`).  Defaults: unsuffixed integers start as `i32` then coerced.
-* **Floating:** `3.14`, `2e10`, suffix `_f32`.  Default `f64`.
-* **String:** `"escape\n"`, `r"raw string"`, `r#"raw #1"#` (up to 255 `#` levels).
-* **Char:** `'A'`, `'\u{1F600}'`.
-* **Boolean:** `true`, `false`.
-
----
-
-<a name="syntactic-grammar"></a>
-## 2. Syntactic Grammar
-
-Bract uses an LL(*) grammar amenable to deterministic parsing with limited backtracking.
-The grammar is provided here in abridged EBNF; Appendix A contains the full set.
-
-```
-Module      ::= { UseDecl | Item } EOF
-Item        ::= FnDecl | StructDecl | EnumDecl | TypeAlias | ConstDecl | ModDecl | ImplBlock
+```bract
+// Integer types with explicit strategy
+let stack_int: i32 = 42;                    // Stack allocation (Cost: 0)
+let linear_int: LinearPtr<i32> = ...;       // Move semantics (Cost: 1)
+let shared_int: SmartPtr<i32> = ...;        // Reference counting (Cost: 4)
+let manual_int: ManualPtr<i32> = malloc(4); // Manual management (Cost: 3)
 ```
 
-#### 2.1 Blocks & Statements
-```
-Block       ::= '{' { Statement } '}'
-Statement   ::= LetStmt | Item | ExprStmt | ControlStmt
-```
+#### Primitive Types
+- **Integers**: `i8`, `i16`, `i32`, `i64`, `i128`, `isize`, `u8`, `u16`, `u32`, `u64`, `u128`, `usize`
+- **Floats**: `f32`, `f64`
+- **Boolean**: `bool`
+- **Character**: `char` (Unicode scalar)
+- **String**: `str` (string slice), `String` (owned string)
+- **Unit**: `()` (zero-sized type)
 
-Control statements include `if`, `while`, `for`, and `loop`.
+#### Type Annotations with Memory Strategies
 
----
-
-<a name="types--type-system"></a>
-## 3. Types & Type System
-
-1. **Primitives:** `i8…i128`, `u8…u128`, `f32`, `f64`, `bool`, `char`, `void` (unit).
-2. **Compound:** arrays `[T; N]`, slices `&[T]`, tuples `(T1, T2, …)`, function pointers `fn(T) -> U`.
-3. **User-Defined:** `struct`, `enum`, opaque `type` alias.
-4. **Generics:** parametric polymorphism with _monomorphisation_ at compile-time.
-5. **Traits (planned):** compile-time interfaces ad-hoc.
-
-### 3.1 Type Inference
-A Hindley-Milner-style algorithm with local modifications: inference is _lexically-scoped_ and does not cross function boundaries.  All generic parameters must be resolvable at monomorphisation time.
-
-### 3.2 Subtyping & Coercions
-Bract has **no implicit subtyping** except:
-* Numeric literals → any numeric type of sufficient width.
-* `&mut T` → `&T` (readonly coerces).
-* Arrays of fixed length `N` → slice `&[T]`.
-
-All other conversions require explicit casts: `as` keyword or trait method.
-
----
-
-<a name="memory-model"></a>
-## 4. Memory Model
-
-Bract adopts an **ownership/borrowing** scheme enforced at compile-time.
-
-1. **Move Semantics** – binding assignment (`let a = b;`) _moves_ unless the type implements `Copy` marker trait.
-2. **Borrowing** – `&T` (shared) / `&mut T` (exclusive) with lexical _lifetimes_ automatically inferred.
-3. **Aliasing XOR Mutation** – At any program point, a value may have
-   *many_ immutable readers **or** _one_ mutable writer, never both.
-4. **Destructor – `drop`** – deterministic RAII cleanup when the owner goes out of scope.
-5. **Unsafe Blocks (future)** – `unsafe` allows opting-out of borrow checks for FFI or manual memory manipulation.
-
-Implementation uses stack allocation by default; `box` places objects on the heap managed by unique `Box<T>` owner.
-
-### 4.1 Lifetime Examples (Non-Normative)
-
-The compiler infers lifetimes but exposes them conceptually using the `'a` syntax familiar from Rust.  These examples are **illustrative only**; programmers rarely write explicit lifetimes.
-
-```Bract
-// A reference that must outlive the returned reference.
-fn first<'a, T>(slice: &'a [T]) -> &'a T {
-    &slice[0]
-}
-
-struct Cache<'ctx> {
-    source: &'ctx str,
-    tokens: Vec<Token<'ctx>>, // each token borrows from `source`
-}
-
-// Mixing immutable and mutable borrows – compile-error
-let mut data = 0u32;
-let r1 = &data;      // shared
-let r2 = &mut data;  // ERROR: cannot borrow `data` as mutable because it is also borrowed as immutable
-```
-
-> **Guideline:** If the compiler cannot prove non-aliasing automatically, use `let tmp = value.clone();` to produce an owned copy with an independent lifetime.
-
----
-
-<a name="variables-bindings--constants"></a>
-## 5. Variables, Bindings, & Constants
-
-| Keyword | Mutability | Lifetime               |
-|---------|------------|------------------------|
-| `let`   | immutable  | scope/block            |
-| `let mut` | mutable  | scope/block            |
-| `const` | immutable  | program (inlined)      |
-| `static`| mutable*†  | program, single address|
-
-† `static mut` is `unsafe`.
-
-Shadowing is permitted; each `let` introduces a new binding.
-
-Destructuring patterns allowed:
-```Bract
-let (x, y) = point;
-let Point { x, y: yy } = point;
-```
-
----
-
-<a name="functions--closures"></a>
-## 6. Functions & Closures
-
-```Bract
-fn max<T: Ord>(a: T, b: T) -> T {
-    if a > b { a } else { b }
+```bract
+fn demonstrate_strategies() {
+    // Stack allocation (default for primitives)
+    let x: i32 = 10;                         // Cost: 0
+    let y: f64 = 3.14;                       // Cost: 0
+    
+    // Linear types (move-only semantics)
+    let buffer: LinearPtr<[u8; 1024]> = LinearPtr::new([0; 1024]);
+    process_buffer(buffer);  // buffer is moved, no longer accessible
+    
+    // Smart pointers (reference counting)
+    let shared_data: SmartPtr<String> = SmartPtr::new("Hello".to_string());
+    let clone1 = shared_data.clone();        // ARC increment
+    let clone2 = shared_data.clone();        // ARC increment
+    
+    // Manual memory management
+    let raw_ptr: ManualPtr<i32> = unsafe { malloc(4) };
+    unsafe { free(raw_ptr); }  // Must be explicitly freed
+    
+    // Region-based allocation
+    let region_data: RegionPtr<Data> = current_region().alloc(Data::new());
+    // Automatically freed when region is dropped
 }
 ```
 
-* **Visibility:** `pub` exports the item.
-* **Generics:** after name: `fn foo<T, U>(t: T) -> U where T: Into<U>`.
-* **Variadics:** C-ABI only `extern "C" fn printf(fmt: &str, ...);`.
-* **Closures:** `|x| x + 1` capture by move default; explicit with `move |x| …`.
-* **Tail-Call:** Compiler _may_ optimize last expressions.
+### 2.2 Composite Types
 
----
+#### Structs with Memory Strategy Inheritance
 
-<a name="statements--control-flow"></a>
-## 7. Statements & Control Flow
+```bract
+// Stack-allocated struct
+struct Point {
+    x: f64,  // Inherits stack allocation from struct
+    y: f64,
+}
 
-* `if` / `else if` / `else` (expression condition of type `bool`).
-* `match` – exhaustive (see §10).
-* Loops: `loop`, `while`, `for PATTERN in EXPR` (desugars to iterator).
-* Jump statements: `break`, `continue`, `return EXPR?`, labeled loops `label: loop { … }`.
-* Defer (future): `defer { … }` executes on scope exit.
+// Linear struct (move-only)
+struct LinearBuffer {
+    data: LinearPtr<[u8; 4096]>,
+    len: usize,
+}
 
----
+// Smart pointer struct (shared ownership)
+struct SharedCache {
+    data: SmartPtr<HashMap<String, Value>>,
+    metadata: Metadata,
+}
 
-<a name="expressions--operators"></a>
-## 8. Expressions & Operators
-
-* All operators return a value (_expressions everywhere_).
-* Evaluation order is **left-to-right**, except assignments evaluate RHS first.
-* Short-circuit: `&&`, `||`.
-
-See full precedence list in Appendix B.
-
----
-
-<a name="data-declarations"></a>
-## 9. Data Declarations
-
-### 9.1 Structs
-```Bract
-pub struct Rect {
-    width:  u32,
-    height: u32,
+// Mixed strategies in single struct
+struct HybridStruct {
+    id: i32,                           // Stack
+    shared_state: SmartPtr<State>,     // Reference counted
+    temp_buffer: RegionPtr<Buffer>,    // Region allocated
+    raw_handle: ManualPtr<Handle>,     // Manual management
 }
 ```
-* Named, tuple `struct Color(u8, u8, u8);`, and unit `struct Marker;` varieties.
-* Default constructor `Rect { width: 0, height: 0 }`.
 
-### 9.2 Enums
-```Bract
+#### Enums with Strategy Variants
+
+```bract
 enum Result<T, E> {
-    Ok(T),
-    Err(E),
+    Ok(T),     // Strategy inherited from T
+    Err(E),    // Strategy inherited from E
 }
-```
-Enums may have variant payloads of differing types.
 
-### 9.3 Unions (ⓘ experimental)
-C-style unions for FFI behind `unsafe`.
-
-### 9.4 Arrays, Slices, & Vec
-Fixed length `[T; N]`, runtime growable `Vec<T>` provided by std.
-
----
-
-<a name="pattern-matching"></a>
-## 10. Pattern Matching
-
-Patterns appear in `let`, `match`, `for`, and function parameters.
-
-```
-Pattern ::= '_' | Literal | IDENT | '&' Pattern | '&mut' Pattern | StructPat | EnumPat | ( PatternList )
-```
-
-Example:
-```Bract
-match msg {
-    Message::Move { x, y } => handle_move(x, y),
-    Message::Quit         => quit(),
+enum MemorySource<T> {
+    Stack(T),                    // Stack allocation
+    Linear(LinearPtr<T>),        // Move semantics
+    Shared(SmartPtr<T>),         // Reference counting
+    Manual(ManualPtr<T>),        // Manual management
 }
 ```
 
-Refutability rules follow Rust's model.
+#### Arrays and Slices
 
----
+```bract
+// Fixed-size arrays
+let stack_array: [i32; 5] = [1, 2, 3, 4, 5];           // Stack
+let linear_array: LinearPtr<[f64; 100]> = ...;         // Linear
+let shared_array: SmartPtr<[String; 10]> = ...;        // Shared
 
-<a name="modules--packages"></a>
-## 11. Modules & Packages
+// Dynamic arrays (vectors)
+let mut stack_vec: Vec<i32> = Vec::new();              // Stack metadata, heap data
+let linear_vec: LinearPtr<Vec<Data>> = ...;            // Linear ownership
+let shared_vec: SmartPtr<Vec<Resource>> = ...;         // Shared ownership
 
-* Each file `foo.pri` is a module named `foo` unless it contains `mod NAME;`.
-* Directory with `mod.rs` (`lib.pri` in future) forms a _package_ root.
-* `use path::{item1, item2 as alias2};` inserts names into local scope.
-* **Privacy:** Items are private to the module unless prefixed by `pub`.
-
-Manifest file `Bract.toml` describes package metadata and dependencies.
-
----
-
-<a name="error-handling"></a>
-## 12. Error Handling
-
-1. **Recoverable:** `Result<T, E>` enriched with `?` propagation operator.
-2. **Unrecoverable:** `panic!(msg)` _aborts the process by default_; no stack-unwinding is performed so that the happy path pays **zero runtime cost**.  A project may opt into unwinding for test or FFI scenarios with `Bractc --panic=unwind` or crate-level attribute `#![panic_strategy = "unwind"]`.
-3. **Option<T>** for presence/absence.
-4. **Best practice:** library APIs should prefer `Result` over `panic!` for errors that a caller can reasonably recover from.
-
----
-
-<a name="concurrency--atomics"></a>
-## 13. Concurrency & Atomics
-
-Bract's standard library provides:
-* `std::thread::spawn(closure) -> JoinHandle` – OS thread per call.
-* `channel()` – multi-producer, single-consumer MPSC channel.
-* `Mutex<T>`, `RwLock<T>`, `Atomic*` primitives.
-
-Safe concurrency is enforced by two _auto-traits_ (planned): **`Send`** for values that can be moved across threads and **`Sync`** for types whose references can be shared across threads.  The compiler automatically implements these for types that contain only `Send`/`Sync` members and no interior mutability violating the borrow rules.
-
-`Mutex<T>` temporarily yields a `&mut T` guard, ensuring that only one mutable reference exists even in the presence of aliasing across threads.  Channels transfer ownership of messages, so once a value is sent it may no longer be accessed by the sender.
-
-> **Note:** low-level atomics are `unsafe` to use incorrectly; prefer higher-level `Arc<Mutex<T>>` patterns where possible.
-
-The underlying memory ordering semantics follow **C++20**'s _sequenced-before_ model with `Acquire`, `Release`, and `AcqRel` orderings.  Data races are undefined behaviour and rejected in _safe_ Bract code.
-
----
-
-<a name="attributes--metadata"></a>
-## 14. Attributes & Metadata
-
-Attributes modify compilation semantics:
-```Bract
-#[inline(always)]
-fn fast() { … }
-
-#[cfg(target_os = "windows")]
-mod win;
+// Slices (references to arrays)
+let slice: &[i32] = &stack_array[1..4];                // Borrowed slice
+let mut_slice: &mut [i32] = &mut stack_array[..];      // Mutable borrowed slice
 ```
-Syntax: `#` `[` MetaItem `]` with nested key-value pairs.
 
----
+### 2.3 Function Types and Closures
 
-<a name="toolchain--compilation-model"></a>
-## 15. Toolchain & Compilation Model
+```bract
+// Function pointers
+let func_ptr: fn(i32, i32) -> i32 = add;
 
-* **Compiler:** `Bractc` front-end → HIR → MIR → LLVM IR.
-* **Incremental:** a _fine-grained content hash_ is recorded for every item (function, impl, monomorphised instance).  When any upstream change occurs, only artifacts whose hash changes are re-optimized and re-linked, enabling sub-second rebuilds on large crates.
-  * Hash keys incorporate _generic parameter instantiation_ so that `Vec<u8>` and `Vec<u16>` are tracked independently.
-  * The dependency graph is persisted in `.Bract/cache` and versioned by compiler revision; stale caches are ignored safely.
-  * A future milestone will add _cross-crate incremental_ once the on-disk format stabilizes.
-* **Optimization levels:** `-O0`, `-O2` (default), `-O3`, `-Os`.
-* **Linkage:** static by default, dynamic with `--shared`.
-* **Target triples** follow LLVM naming (`x86_64-pc-windows-msvc`).
-* **Build tool:** `Bract build`, `Bract test`, `Bract run` (analogue to Cargo).
+// Closures with captured environment strategies
+let closure = |x: i32| -> i32 {
+    x + captured_value  // Strategy inherited from captured variables
+};
 
-### 15.1 Foreign-Function Interface (FFI)
+// Higher-order functions with strategy constraints
+fn map<T, U, F>(data: LinearPtr<Vec<T>>, f: F) -> LinearPtr<Vec<U>>
+where
+    F: FnOnce(T) -> U,
+{
+    // Implementation with linear semantics preserved
+}
+```
 
-Bract can call into, and be called from, C with predictable layout and calling conventions:
+### 2.4 Generic Types with Memory Strategy Parameters
 
-* `extern "C" fn` declares a function with the platform C ABI.
-* `#[repr(C)]` on `struct` and `enum` guarantees field order and tag layout compatible with C.
-* `unsafe extern "C" fn callback()` allows Bract functions to be passed to C libraries.
+```bract
+// Generic struct with strategy parameter
+struct Container<T, S: MemoryStrategy> {
+    data: S<T>,
+    metadata: ContainerMetadata,
+}
 
-All FFI boundaries are **`unsafe`** because the compiler cannot validate contracts on the other side.  Idiomatic Bract code wraps raw FFI handles in safe RAII abstractions:
+// Usage with different strategies
+type StackContainer<T> = Container<T, Stack>;
+type LinearContainer<T> = Container<T, Linear>;
+type SharedContainer<T> = Container<T, SmartPtr>;
 
-```Bract
-#[repr(C)]
-pub struct FILE;
+// Generic functions with strategy constraints
+fn process<T, S>(container: Container<T, S>) -> ProcessedData
+where
+    S: MemoryStrategy + Clone,  // Strategy must support cloning
+{
+    // Function works with any compatible memory strategy
+}
+```
 
+### 2.5 Type Inference with Strategy Resolution
+
+```bract
+fn inference_examples() {
+    // Simple inference
+    let x = 42;                    // Inferred as i32 [Stack]
+    let y = vec![1, 2, 3];         // Inferred as Vec<i32> [Stack metadata, heap data]
+    
+    // Strategy conflict resolution
+    let mixed = if condition {
+        create_stack_data()        // Returns Data [Stack]
+    } else {
+        create_shared_data()       // Returns Data [SmartPtr]
+    };
+    // Type: Data [SmartPtr] - compiler chooses strategy that handles both cases
+    
+    // Generic inference
+    let container = Container::new(data);  // Strategy inferred from data's strategy
+    
+    // Performance-driven inference
+    let optimized = expensive_computation();  // Compiler chooses optimal strategy
+    // Based on usage patterns and performance requirements
+}
+```
+
+## 3. Memory Management
+
+### 3.1 Hybrid Memory Strategy System
+
+Bract supports five memory management strategies, each optimized for different use cases:
+
+#### Stack Strategy (Cost: 0)
+```bract
+fn stack_allocation_demo() {
+    let x: i32 = 42;              // Zero-cost stack allocation
+    let array: [f64; 100] = [0.0; 100];  // Stack array
+    
+    // Automatic cleanup at scope end (RAII)
+    // No runtime overhead
+    // Limited by stack size
+}
+```
+
+#### Linear Strategy (Cost: 1)
+```bract
+fn linear_semantics_demo() {
+    let buffer = LinearPtr::new(Buffer::with_capacity(1024));
+    
+    let processed = process_data(buffer);  // buffer is moved
+    // buffer is no longer accessible here - compile error if used
+    
+    // Benefits: zero-copy transfers, guaranteed single ownership
+    // Compile-time verification of consumption
+}
+
+struct Buffer {
+    data: Vec<u8>,
+}
+
+// Linear types must be consumed exactly once
+fn process_data(buffer: LinearPtr<Buffer>) -> ProcessedBuffer {
+    // Implementation moves buffer, transforms it
+    ProcessedBuffer { data: buffer.into_inner().data }
+}
+```
+
+#### Region Strategy (Cost: 2)
+```bract
+fn region_allocation_demo() {
+    // Create a memory region for batch operations
+    region temp_region {
+        let mut results = Vec::new();
+        
+        for item in large_dataset {
+            // All allocations use the same region
+            let processed = temp_region.alloc(process_item(item));
+            results.push(processed);
+        }
+        
+        // Entire region freed at once - O(1) cleanup
+        // Cache-friendly memory layout
+    }
+}
+
+// Region-scoped allocation
+#[memory(strategy = "region", size_hint = 64_KB)]
+fn batch_processor(items: &[Item]) -> Vec<Result> {
+    // All function allocations use region strategy
+    // Pre-allocated based on size hint
+}
+```
+
+#### Smart Pointer Strategy (Cost: 4)
+```bract
+fn shared_ownership_demo() {
+    let shared_data = SmartPtr::new(expensive_computation());
+    
+    let handle1 = shared_data.clone();  // Increment reference count
+    let handle2 = shared_data.clone();  // Increment reference count
+    
+    spawn_task(move || {
+        process_in_background(handle1);
+        // Reference count decremented when handle1 drops
+    });
+    
+    // shared_data and handle2 still valid
+    // Last reference triggers deallocation
+}
+
+// Cycle detection for complex data structures
+struct Node {
+    data: String,
+    children: SmartPtr<Vec<SmartPtr<Node>>>,  // Tree structure
+    parent: WeakPtr<Node>,                    // Weak reference breaks cycles
+}
+```
+
+#### Manual Strategy (Cost: 3)
+```bract
+fn manual_memory_demo() {
+    unsafe {
+        let ptr: ManualPtr<Data> = malloc(size_of::<Data>());
+        
+        // Manual initialization
+        ptr.write(Data::new());
+        
+        // Compiler tracks allocation site
+        process_raw_data(ptr);
+        
+        // Must explicitly free - compile error if missing
+        free(ptr);
+    }
+}
+
+// FFI integration
 extern "C" {
-    fn fopen(path: *const u8, mode: *const u8) -> *mut FILE;
-    fn fclose(f: *mut FILE) -> i32;
+    fn external_allocator(size: usize) -> ManualPtr<u8>;
+    fn external_free(ptr: ManualPtr<u8>);
 }
 
-pub struct File(*mut FILE);
+fn ffi_memory_management() {
+    unsafe {
+        let buffer = external_allocator(1024);
+        // Use buffer...
+        external_free(buffer);  // Required for correctness
+    }
+}
+```
 
+### 3.2 Memory Strategy Selection Guidelines
+
+```bract
+// Performance-critical, short-lived data
+fn use_stack() {
+    let temp_array: [i32; 1000] = [0; 1000];  // Stack allocation
+    // Fast allocation/deallocation, limited size
+}
+
+// Single ownership, transfer between functions
+fn use_linear() -> LinearPtr<LargeDataStructure> {
+    let data = LinearPtr::new(expensive_initialization());
+    // Zero-copy transfers, guaranteed single owner
+    data
+}
+
+// Batch processing with deterministic cleanup
+fn use_region(items: &[Input]) -> Vec<Output> {
+    region batch {
+        items.iter()
+             .map(|item| batch.alloc(transform(item)))
+             .collect()
+    }  // All allocations freed together
+}
+
+// Shared read-only data
+fn use_smart_ptr() -> SmartPtr<ReadOnlyCache> {
+    static CACHE: OnceCell<SmartPtr<ReadOnlyCache>> = OnceCell::new();
+    CACHE.get_or_init(|| SmartPtr::new(build_cache())).clone()
+}
+
+// System programming, FFI, precise control
+unsafe fn use_manual() -> ManualPtr<SystemResource> {
+    let resource = malloc(size_of::<SystemResource>());
+    system_initialize_resource(resource);
+    resource
+}
+```
+
+### 3.3 Strategy Conversion and Interoperability
+
+```bract
+fn strategy_conversions() {
+    // Stack to Linear
+    let stack_data = Data::new();
+    let linear_data = LinearPtr::new(stack_data);  // Move to linear
+    
+    // Linear to Smart Pointer
+    let shared_data = SmartPtr::new(linear_data.into_inner());
+    
+    // Smart Pointer to Manual (unsafe)
+    unsafe {
+        let manual_ptr = SmartPtr::into_raw(shared_data);
+        // Now manually managed - must call SmartPtr::from_raw to restore
+    }
+    
+    // Borrowing across strategies
+    let stack_value = 42i32;
+    let linear_container = LinearPtr::new(Container { value: &stack_value });
+    // Borrow checker ensures stack_value outlives linear_container
+}
+```
+
+## 4. Ownership and Lifetimes
+
+### 4.1 Ownership Rules
+
+1. **Each value has exactly one owner** (except for shared ownership via SmartPtr)
+2. **Values are moved by default**, copied only when explicitly allowed
+3. **References must be valid for their entire lifetime**
+4. **Mutable and immutable references cannot coexist**
+
+```bract
+fn ownership_examples() {
+    // Move semantics (default)
+    let data = create_data();
+    let moved_data = data;     // data is moved
+    // println!("{}", data);   // Compile error: use after move
+    
+    // Borrowing (references)
+    let value = String::from("hello");
+    let borrowed = &value;      // Immutable borrow
+    println!("{}", borrowed);   // OK
+    println!("{}", value);      // OK - original still accessible
+    
+    // Mutable borrowing
+    let mut mutable_value = String::from("world");
+    let mutable_ref = &mut mutable_value;
+    mutable_ref.push_str("!");
+    // println!("{}", mutable_value);  // Error: cannot borrow while mutably borrowed
+    println!("{}", mutable_ref);     // OK
+}
+```
+
+### 4.2 Lifetime Annotations
+
+```bract
+// Explicit lifetime parameters
+fn longest<'a>(s1: &'a str, s2: &'a str) -> &'a str {
+    if s1.len() > s2.len() { s1 } else { s2 }
+}
+
+// Lifetime elision (common cases inferred)
+fn first_word(s: &str) -> &str {  // Lifetimes inferred
+    s.split_whitespace().next().unwrap_or("")
+}
+
+// Struct with lifetime parameters
+struct ImportantExcerpt<'a> {
+    part: &'a str,  // Reference must live at least as long as the struct
+}
+
+// Method with lifetime annotations
+impl<'a> ImportantExcerpt<'a> {
+    fn announce_and_return_part(&self, announcement: &str) -> &str {
+        println!("Attention please: {}", announcement);
+        self.part  // Lifetime tied to self
+    }
+}
+```
+
+### 4.3 Linear Types and Consumption
+
+```bract
+// Linear types must be consumed exactly once
+fn linear_type_example() {
+    let file_handle = LinearPtr::new(File::open("data.txt")?);
+    
+    // Must consume the handle
+    let content = read_entire_file(file_handle);  // file_handle consumed here
+    // file_handle no longer accessible
+    
+    // Compile error if not consumed:
+    // let unused = LinearPtr::new(File::open("test.txt")?);
+    // // Error: linear resource not consumed
+}
+
+// Linear type functions must consume their parameters
+fn read_entire_file(file: LinearPtr<File>) -> Result<String, IoError> {
+    let mut file = file.into_inner();  // Extract from linear wrapper
+    let mut content = String::new();
+    file.read_to_string(&mut content)?;
+    Ok(content)
+    // file is automatically closed when it goes out of scope
+}
+
+// Linear types can be partially consumed
+struct LinearPair<T, U> {
+    first: T,
+    second: U,
+}
+
+impl<T, U> LinearPtr<LinearPair<T, U>> {
+    fn split(self) -> (T, U) {
+        let pair = self.into_inner();
+        (pair.first, pair.second)  // Both components consumed
+    }
+}
+```
+
+### 4.4 Borrowing Rules and Lifetime Checking
+
+```bract
+fn borrowing_rules() {
+    let mut data = vec![1, 2, 3, 4, 5];
+    
+    // Multiple immutable borrows allowed
+    let read1 = &data;
+    let read2 = &data;
+    println!("{:?} {:?}", read1, read2);  // OK
+    
+    // Mutable borrow prevents other borrows
+    let write = &mut data;
+    write.push(6);
+    // let read3 = &data;     // Error: cannot borrow as immutable while mutably borrowed
+    // println!("{:?}", read1); // Error: read1 used after mutable borrow
+    
+    // Borrowing across function calls
+    let slice = get_slice(&data);        // Immutable borrow
+    process_slice(slice);                // OK
+    modify_data(&mut data);              // OK after immutable borrow ends
+}
+
+fn get_slice(data: &Vec<i32>) -> &[i32] {
+    &data[1..4]  // Slice borrows from data
+}
+
+// Lifetime ensures slice doesn't outlive data
+fn process_slice(slice: &[i32]) {
+    for &value in slice {
+        println!("{}", value);
+    }
+}
+
+fn modify_data(data: &mut Vec<i32>) {
+    data.push(42);
+}
+```
+
+## 5. Performance Contracts
+
+### 5.1 Function Performance Annotations
+
+```bract
+// Basic performance contract
+#[performance(max_cost = 1000, max_memory = 1024)]
+fn fast_algorithm(data: &[i32]) -> i32 {
+    // Compiler verifies this function meets performance requirements
+    let mut sum = 0;
+    for &value in data {
+        sum += value * 2;
+    }
+    sum
+}
+
+// Detailed performance specification
+#[performance(
+    max_cpu_cycles = 500_000,      // Maximum CPU cycles
+    max_memory_bytes = 4096,       // Maximum memory usage
+    max_allocations = 0,           // Zero heap allocations
+    max_stack_bytes = 256,         // Maximum stack usage
+    deterministic = true           // Deterministic execution time
+)]
+fn real_time_function(input: &InputData) -> OutputData {
+    // Guaranteed real-time performance
+    // Compiler rejects if requirements cannot be met
+}
+
+// Strategy-specific contracts
+#[performance(strategy = "stack", max_cost = 100)]
+fn stack_only_function() -> Result<Data, Error> {
+    // All operations must use stack allocation
+    // Compiler error if heap allocation attempted
+}
+
+// Conditional performance contracts
+#[performance(if cfg!(debug_assertions) then max_cost = 5000 else max_cost = 1000)]
+fn debug_aware_function() {
+    // Different performance requirements for debug vs release
+}
+```
+
+### 5.2 Memory Strategy Performance Characteristics
+
+```bract
+// Performance cost model for each strategy
+impl MemoryStrategy {
+    fn allocation_cost(&self) -> u8 {
+        match self {
+            MemoryStrategy::Stack => 0,      // Zero cost
+            MemoryStrategy::Linear => 1,     // Minimal overhead
+            MemoryStrategy::Region => 2,     // Batch allocation
+            MemoryStrategy::Manual => 3,     // System call overhead
+            MemoryStrategy::SmartPtr => 4,   // Reference counting
+        }
+    }
+    
+    fn deallocation_cost(&self) -> u8 {
+        match self {
+            MemoryStrategy::Stack => 0,      // Automatic, zero cost
+            MemoryStrategy::Linear => 1,     // RAII cleanup
+            MemoryStrategy::Region => 0,     // Bulk deallocation
+            MemoryStrategy::Manual => 2,     // System call
+            MemoryStrategy::SmartPtr => 3,   // Reference counting + cleanup
+        }
+    }
+}
+```
+
+### 5.3 Compile-Time Performance Verification
+
+```bract
+// Performance analysis during compilation
+fn compile_time_verified() {
+    profile_start!("critical_section");
+    
+    // Compiler tracks cost of each operation
+    let data = vec![1, 2, 3, 4, 5];        // Cost: heap allocation
+    let sum = data.iter().sum::<i32>();    // Cost: O(n) iteration
+    let result = expensive_computation();   // Cost: from function annotation
+    
+    profile_end!("critical_section");
+    
+    // Compiler reports:
+    // - Total estimated cost: 1,247 cycles
+    // - Memory usage: 40 bytes heap, 24 bytes stack
+    // - Allocations: 1 heap allocation
+    // - Performance contract: SATISFIED
+}
+
+#[performance(max_cost = 2000)]  // Function meets contract
+fn expensive_computation() -> i32 {
+    // Implementation with verified performance
+}
+```
+
+### 5.4 Runtime Performance Monitoring
+
+```bract
+// Development-time performance verification
+#[cfg(debug_assertions)]
+fn runtime_verification_example() {
+    let _guard = PerformanceGuard::new("critical_function", 
+                                      PerformanceContract {
+                                          max_cycles: 1_000_000,
+                                          max_memory: 8192,
+                                      });
+    
+    // Function implementation
+    critical_algorithm();
+    
+    // Guard automatically verifies contract on drop
+    // Panic or log violation in debug builds
+}
+
+// Production profiling hooks
+#[cfg(feature = "profiling")]
+fn production_profiling() {
+    PROFILER.start_measurement("hot_path");
+    
+    hot_path_computation();
+    
+    PROFILER.end_measurement("hot_path");
+    
+    // Profiler can:
+    // - Track allocation patterns
+    // - Identify performance regressions
+    // - Generate optimization suggestions
+}
+```
+
+## 6. Syntax Reference
+
+### 6.1 Variable Declarations
+
+```bract
+// Basic variable declaration
+let x = 42;                    // Immutable, type inferred
+let mut y = 10;                // Mutable
+let z: i32 = 100;             // Explicit type annotation
+
+// Memory strategy annotations
+let stack_var: i32 = 42;                        // Stack allocation (default)
+let linear_var: LinearPtr<String> = ...;        // Linear ownership
+let shared_var: SmartPtr<Data> = ...;           // Reference counted
+let manual_var: ManualPtr<Resource> = ...;      // Manual management
+let region_var: RegionPtr<Buffer> = ...;        // Region allocated
+
+// Pattern matching in declarations
+let (first, second) = tuple_value;
+let Point { x, y } = point;
+let [head, tail @ ..] = array;
+```
+
+### 6.2 Function Definitions
+
+```bract
+// Basic function
+fn add(a: i32, b: i32) -> i32 {
+    a + b
+}
+
+// Generic function with constraints
+fn process<T, S>(data: S<T>) -> ProcessedData
+where
+    T: Clone + Debug,
+    S: MemoryStrategy,
+{
+    // Implementation
+}
+
+// Function with performance contract
+#[performance(max_cost = 1000, strategy = "stack")]
+fn fast_function(input: &InputData) -> OutputData {
+    // Performance-guaranteed implementation
+}
+
+// Memory region scoped function
+#[memory(strategy = "region", size_hint = 4096)]
+fn batch_operation(items: &[Item]) -> Vec<Result> {
+    // All allocations use region strategy
+}
+
+// Unsafe function for manual memory management
+unsafe fn raw_memory_operation(ptr: ManualPtr<Data>) -> ManualPtr<ProcessedData> {
+    // Manual memory operations
+}
+```
+
+### 6.3 Control Flow
+
+```bract
+// If expressions
+let result = if condition {
+    value1
+} else {
+    value2
+};
+
+// Match expressions with memory-aware patterns
+match value {
+    LinearPtr(data) => process_linear(data),
+    SmartPtr(data) => process_shared(data.clone()),
+    StackValue(data) => process_stack(&data),
+}
+
+// Loops with performance annotations
+#[performance(max_iterations = 1000)]
+for item in collection {
+    process_item(item);
+}
+
+while condition {
+    // Loop body
+}
+
+loop {
+    if should_break {
+        break;
+    }
+}
+```
+
+### 6.4 Memory Management Syntax
+
+```bract
+// Region-based allocation
+region temp_region {
+    let buffer1 = temp_region.alloc(Buffer::new());
+    let buffer2 = temp_region.alloc(Buffer::new());
+    // All allocations freed when region ends
+}
+
+// Explicit allocation with strategies
+let stack_data = Data::new();                          // Stack
+let linear_data = LinearPtr::new(Data::new());         // Linear
+let shared_data = SmartPtr::new(Data::new());          // Shared
+let manual_data = unsafe { ManualPtr::malloc() };      // Manual
+
+// Strategy conversion
+let converted = shared_data.try_into_linear()?;        // Convert if only reference
+let back_to_shared = SmartPtr::new(converted.into_inner());
+
+// Memory region management
+let region = MemoryRegion::new_with_capacity(64_KB);
+region.scope(|r| {
+    let temp_data = r.alloc(expensive_computation());
+    process_data(temp_data);
+    // All region allocations freed here
+});
+```
+
+### 6.5 Pattern Matching with Ownership
+
+```bract
+// Pattern matching that respects ownership
+match owned_value {
+    Pattern1(data) => {
+        // data is moved into this branch
+        consume_data(data);
+    }
+    Pattern2(ref data) => {
+        // data is borrowed, original still accessible
+        use_data(data);
+    }
+    Pattern3(ref mut data) => {
+        // Mutable borrow
+        modify_data(data);
+    }
+}
+
+// Linear type patterns
+match linear_resource {
+    Some(resource) => {
+        // resource is moved, must be consumed
+        let result = process_resource(resource);
+        // resource no longer accessible
+        result
+    }
+    None => {
+        // Linear None doesn't consume anything
+        default_result()
+    }
+}
+
+// Memory strategy pattern matching
+fn handle_any_strategy<T>(data: AnyStrategy<T>) -> ProcessedData {
+    match data {
+        AnyStrategy::Stack(value) => process_stack(value),
+        AnyStrategy::Linear(ptr) => process_linear(ptr),
+        AnyStrategy::Shared(ptr) => process_shared(ptr),
+        AnyStrategy::Manual(ptr) => unsafe { process_manual(ptr) },
+        AnyStrategy::Region(ptr) => process_region(ptr),
+    }
+}
+```
+
+## 7. Standard Library
+
+### 7.1 Core Types with Memory Strategies
+
+```bract
+// Collections with strategy support
+pub struct Vec<T, S: MemoryStrategy = Stack> {
+    data: S<[T]>,
+    len: usize,
+    capacity: usize,
+}
+
+impl<T> Vec<T, Stack> {
+    #[performance(max_cost = 100, max_allocations = 1)]
+    pub fn new() -> Self { /* ... */ }
+    
+    #[performance(max_cost = 50, max_allocations = 0)]
+    pub fn push(&mut self, value: T) -> Result<(), CapacityError> { /* ... */ }
+}
+
+impl<T> Vec<T, SmartPtr> {
+    #[performance(max_cost = 200, max_allocations = 1)]
+    pub fn new_shared() -> Self { /* ... */ }
+    
+    pub fn clone(&self) -> Self { /* ARC increment */ }
+}
+
+// String types with memory strategies
+pub struct String<S: MemoryStrategy = Stack> {
+    data: S<[u8]>,
+    len: usize,
+}
+
+// Option with linear semantics
+pub enum LinearOption<T> {
+    Some(T),     // Must consume T
+    None,        // Linear None
+}
+
+impl<T> LinearOption<T> {
+    #[performance(max_cost = 10)]
+    pub fn unwrap_or_consume<F>(self, f: F) -> T
+    where F: FnOnce() -> T { /* ... */ }
+}
+```
+
+### 7.2 Memory Management Utilities
+
+```bract
+// Region management
+pub struct MemoryRegion {
+    // Private implementation
+}
+
+impl MemoryRegion {
+    #[performance(max_cost = 1000)]
+    pub fn new_with_capacity(capacity: usize) -> Self { /* ... */ }
+    
+    #[performance(max_cost = 50)]
+    pub fn alloc<T>(&self, value: T) -> RegionPtr<T> { /* ... */ }
+    
+    #[performance(max_cost = 10)]
+    pub fn scope<F, R>(&self, f: F) -> R 
+    where F: FnOnce(&Self) -> R { /* ... */ }
+}
+
+// Smart pointer utilities
+pub struct SmartPtr<T> {
+    data: Arc<T>,  // Internal implementation
+}
+
+impl<T> SmartPtr<T> {
+    #[performance(max_cost = 200, max_allocations = 1)]
+    pub fn new(value: T) -> Self { /* ... */ }
+    
+    #[performance(max_cost = 50)]
+    pub fn clone(&self) -> Self { /* ... */ }
+    
+    #[performance(max_cost = 100)]
+    pub fn try_into_unique(self) -> Result<T, Self> { /* ... */ }
+}
+
+// Linear type utilities
+pub struct LinearPtr<T> {
+    data: Box<T>,  // Internal implementation
+}
+
+impl<T> LinearPtr<T> {
+    #[performance(max_cost = 100, max_allocations = 1)]
+    pub fn new(value: T) -> Self { /* ... */ }
+    
+    #[performance(max_cost = 10)]
+    pub fn into_inner(self) -> T { /* ... */ }
+}
+```
+
+### 7.3 I/O with Performance Contracts
+
+```bract
+// File operations with guaranteed performance bounds
 impl File {
-    pub fn open(path: &CStr, mode: &CStr) -> Result<File, IoError> {
-        let ptr = unsafe { fopen(path.as_ptr(), mode.as_ptr()) };
-        if ptr.is_null() { Err(IoError::last()) } else { Ok(File(ptr)) }
+    #[performance(max_cost = 10_000, latency = "1ms")]
+    pub fn open(path: &str) -> Result<LinearPtr<File>, IoError> { /* ... */ }
+    
+    #[performance(max_cost = 1000, max_memory = 0)]
+    pub fn read(&mut self, buffer: &mut [u8]) -> Result<usize, IoError> { /* ... */ }
+    
+    #[performance(max_cost = 2000, max_memory = 0)]
+    pub fn write(&mut self, data: &[u8]) -> Result<(), IoError> { /* ... */ }
+}
+
+// Network operations with latency bounds
+impl TcpStream {
+    #[performance(latency = "network_dependent", max_memory = 1024)]
+    pub fn connect(addr: &str) -> Result<LinearPtr<TcpStream>, NetworkError> { /* ... */ }
+    
+    #[performance(max_cost = 500, max_memory = 0)]
+    pub fn send(&mut self, data: &[u8]) -> Result<(), NetworkError> { /* ... */ }
+}
+```
+
+### 7.4 Concurrency with Memory Safety
+
+```bract
+// Thread spawning with memory strategy constraints
+pub fn spawn<F, T, S>(f: F) -> JoinHandle<T>
+where
+    F: FnOnce() -> T + Send + 'static,
+    T: Send + 'static,
+    S: MemoryStrategy + Send,
+{
+    // Implementation ensures memory safety across threads
+}
+
+// Channels with zero-copy semantics for linear types
+pub struct LinearChannel<T> {
+    // Implementation
+}
+
+impl<T> LinearChannel<T> {
+    #[performance(max_cost = 200)]
+    pub fn send(&self, value: LinearPtr<T>) -> Result<(), SendError> {
+        // Zero-copy send for linear types
+    }
+    
+    #[performance(max_cost = 200)]
+    pub fn recv(&self) -> Result<LinearPtr<T>, RecvError> {
+        // Zero-copy receive
     }
 }
 
-impl Drop for File {
-    fn drop(&mut self) {
-        unsafe { fclose(self.0); }
-    }
+// Atomic operations with performance guarantees
+impl AtomicI32 {
+    #[performance(max_cost = 100, wait_free = true)]
+    pub fn fetch_add(&self, value: i32) -> i32 { /* ... */ }
+    
+    #[performance(max_cost = 50, wait_free = true)]
+    pub fn load(&self) -> i32 { /* ... */ }
+    
+    #[performance(max_cost = 50, wait_free = true)]
+    pub fn store(&self, value: i32) { /* ... */ }
 }
 ```
 
-> **Caveat:** FFI functions must not unwind across the boundary; use `panic::catch_unwind` or compile with `--panic=abort`.
+## 8. Compilation Model
 
----
+### 8.1 Compilation Pipeline
 
-<a name="standard-library-overview"></a>
-## 16. Standard Library Overview
+1. **Lexical Analysis**: Source → Tokens
+2. **Parsing**: Tokens → AST with memory annotations
+3. **Semantic Analysis**: 
+   - Name resolution
+   - Type checking with memory strategies
+   - Ownership and lifetime analysis
+   - Performance contract verification
+4. **Bract IR Generation**: AST → High-level IR with memory operations
+5. **IR Optimization**: Memory strategy optimization, dead code elimination
+6. **Lowering**: Bract IR → Cranelift IR
+7. **Code Generation**: Machine code with runtime integration
 
-| Module    | Purpose                        |
-|-----------|--------------------------------|
-| `core`    | language primitives, `Option`, `Result`, iterators |
-| `alloc`   | heap collections `Vec`, `String`, `Box` |
-| `std`     | IO, OS abstractions, threading, networking |
-| `test`    | unit-test harness |
+### 8.2 Memory Strategy Resolution
 
-The **prelude** (`use std::prelude::*;`) is implicitly imported into every module.
+The compiler resolves memory strategies through:
 
-### 16.1 Embedded / `#![no_std]` Profile
+1. **Explicit Annotations**: User-specified strategies take precedence
+2. **Type Inference**: Strategy propagation through type relationships
+3. **Performance Requirements**: Strategy selection based on performance contracts
+4. **Usage Patterns**: Analysis of how values are used to determine optimal strategy
+5. **Conflict Resolution**: Automatic strategy conversion when necessary
 
-Code that targets bare-metal or kernel environments may disable the full standard library:
+### 8.3 Performance Contract Verification
 
-```Bract
-#![no_std]
-```
+Compile-time verification ensures:
 
-This implicitly links only `core`; crates may opt into `alloc` by pulling in an allocator (`extern crate alloc;`).  The build tool passes the appropriate linker flags to avoid libc.
+- **Cost Estimation**: Static analysis of operation costs
+- **Memory Usage**: Tracking of stack and heap usage
+- **Allocation Counting**: Verification of allocation limits
+- **Latency Analysis**: End-to-end timing estimation
+- **Contract Propagation**: Performance requirements through call chains
 
----
+### 8.4 Error Reporting
 
-<a name="future-directions"></a>
-## 17. Future Directions
+Bract provides comprehensive error messages with:
 
-* Traits & trait objects
-* Macros & compile-time eval (`const fn`, `constexpr` style)
-* Async/await with cooperative green threading
-* WASM backend & embedded targets
-* Formal verification of borrow checker (research)
+- **Memory Strategy Conflicts**: Clear explanations and suggested fixes
+- **Ownership Violations**: Precise error locations with suggestions
+- **Performance Contract Failures**: Detailed cost breakdowns and optimization hints
+- **Lifetime Errors**: Visual lifetime diagrams and fix suggestions
 
----
-
-<a name="appendix-a-complete-token-grammar-ebnf"></a>
-## Appendix A: Complete Token Grammar (EBNF)
-
-```
-DecimalLiteral   ::= ['0'..'9']['0'..'9' '_']*
-HexLiteral       ::= '0x'['0'..'9' 'a'..'f' 'A'..'F' '_']+
-OctalLiteral     ::= '0o'[0'..'7' '_']+
-BinaryLiteral    ::= '0b'[ '0' | '1' | '_' ]+
-FloatLiteral     ::= DecimalLiteral '.' DecimalLiteral [ Exponent ]
-Exponent         ::= ('e' | 'E') ['+'|'-']? DecimalLiteral
-StringLiteral    ::= '"' ( '\\'Any | ~('"'|'\\') )* '"'
-RawStringLiteral ::= 'r' '#'* '"' .* '"' '#'*
-CharLiteral      ::= '\'' ( '\\'Any | ~('\''|'\\') ) '\''
-```
-
----
-
-<a name="appendix-b-operator-precedence-table"></a>
-## Appendix B: Operator Precedence Table
-
-| Level (high→low) | Operators | Associativity |
-|------------------|-----------|---------------|
-| 14 | `() [] . ?`               | left |
-| 13 | `!  ~  &*`                | right |
-| 12 | `*  /  %`                 | left |
-| 11 | `+  -`                    | left |
-| 10 | `<<  >>`                  | left |
-| 9  | `< <= > >=`               | left |
-| 8  | `== !=`                   | left |
-| 7  | `&`                       | left |
-| 6  | `^`                       | left |
-| 5  | `|`                       | left |
-| 4  | `&&`                      | left |
-| 3  | `||`                      | left |
-| 2  | `?:` (ternary)            | right |
-| 1  | `= += -= *= /= %= &= ^= |= <<= >>=` | right |
-
----
-
-### End of Specification
+**This specification provides the foundation for Bract's revolutionary approach to systems programming with guaranteed performance and memory safety.**
