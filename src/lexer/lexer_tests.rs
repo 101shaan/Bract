@@ -425,7 +425,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "Lexer error")]
     fn test_invalid_character() {
-        let mut lexer = create_lexer("@");
+        let mut lexer = create_lexer("§");  // Updated to use § instead of @
         collect_tokens(&mut lexer);
     }
     
