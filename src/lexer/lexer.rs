@@ -33,7 +33,7 @@ impl<'a> Lexer<'a> {
         // Skip BOM (Byte Order Mark) if present
         if let Some('\u{FEFF}') = current_char {
             current_pos += 3; // BOM is 3 bytes in UTF-8
-            position.advance('\u{FEFF}');
+            position.advance(3); // UTF-8 BOM is 3 bytes
             current_char = chars.next();
         }
         
@@ -105,7 +105,11 @@ impl<'a> Lexer<'a> {
     pub fn advance(&mut self) {
         if let Some(ch) = self.current_char {
             // Update position tracking
-            self.position.advance(ch);
+            if ch == '\n' {
+                self.position.next_line();
+            } else {
+                self.position.next_column();
+            }
             
             // Move to next character
             self.current_pos += ch.len_utf8();
@@ -942,6 +946,7 @@ impl<'a> Lexer<'a> {
             ']' => TokenType::RightBracket,
             ';' => TokenType::Semicolon,
             ',' => TokenType::Comma,
+            '@' => TokenType::At,  // For memory annotations
             
             // Unknown character
             _ => {
