@@ -1,64 +1,61 @@
-/// A position in a source file, used for error reporting.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+//! Source position tracking for error reporting
+//!
+//! This module provides utilities for tracking positions in source code,
+//! enabling precise error location reporting and source mapping.
+
+use std::fmt;
+
+/// Represents a position in source code
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Position {
     /// Line number (1-based)
     pub line: usize,
-    /// Column number (1-based)
+    /// Column number (1-based)  
     pub column: usize,
-    /// Absolute offset from the start of the file (0-based)
+    /// Byte offset from start of file (0-based)
     pub offset: usize,
-    /// The file ID this position refers to
+    /// File identifier
     pub file_id: usize,
 }
 
 impl Position {
-    /// Create a new Position with the given coordinates
+    /// Create a new position
     pub fn new(line: usize, column: usize, offset: usize, file_id: usize) -> Self {
         Self {
             line,
-            column, 
+            column,
             offset,
             file_id,
         }
     }
-
-    /// Create a default position at the start of a file
+    
+    /// Create a position at the start of a file
     pub fn start(file_id: usize) -> Self {
-        Self {
-            line: 1,
-            column: 1,
-            offset: 0,
-            file_id,
-        }
+        Self::new(1, 1, 0, file_id)
     }
     
-    /// Advance the position by a single character
-    pub fn advance(&mut self, ch: char) {
-        self.offset += ch.len_utf8();
-        
-        if ch == '\n' {
-            self.line += 1;
-            self.column = 1;
-        } else {
-            self.column += 1;
-        }
+    /// Advance to the next column
+    pub fn next_column(&mut self) {
+        self.column += 1;
+        self.offset += 1;
     }
     
-    /// Advance the position by multiple characters
-    pub fn advance_multiple(&mut self, text: &str) {
-        for ch in text.chars() {
-            self.advance(ch);
-        }
+    /// Advance to the next line
+    pub fn next_line(&mut self) {
+        self.line += 1;
+        self.column = 1;
+        self.offset += 1;
+    }
+    
+    /// Advance by a specific number of bytes
+    pub fn advance(&mut self, bytes: usize) {
+        self.column += bytes;
+        self.offset += bytes;
     }
 }
 
-impl Default for Position {
-    fn default() -> Self {
-        Self {
-            line: 1,
-            column: 1,
-            offset: 0,
-            file_id: 0,
-        }
+impl fmt::Display for Position {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}:{}", self.line, self.column)
     }
 } 
