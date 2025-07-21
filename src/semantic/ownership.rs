@@ -342,7 +342,9 @@ impl OwnershipAnalyzer {
             
             Expr::StructInit { fields, .. } => {
                 for field in fields {
-                    self.analyze_expr(&field.value);
+                    if let Some(ref value) = field.value {
+                        self.analyze_expr(value);
+                    }
                 }
             }
             
@@ -468,7 +470,9 @@ impl OwnershipAnalyzer {
             }
             Pattern::Struct { fields, .. } => {
                 for field in fields {
-                    self.analyze_pattern(&field.pattern);
+                    if let Some(ref pattern) = field.pattern {
+                        self.analyze_pattern(pattern);
+                    }
                 }
             }
             Pattern::Enum { patterns, .. } => {
@@ -656,8 +660,8 @@ impl OwnershipAnalyzer {
     fn get_memory_strategy(&self, ty: &Type) -> MemoryStrategy {
         match ty {
             Type::Pointer { memory_strategy, .. } |
-            Type::Reference { memory_strategy, .. } |
             Type::Array { memory_strategy, .. } => *memory_strategy,
+            Type::Reference { .. } => MemoryStrategy::Inferred,
             _ => MemoryStrategy::Inferred,
         }
     }
