@@ -15,7 +15,7 @@
 use crate::lexer::{TokenType, position::Position};
 use crate::ast::{Pattern, Literal, Span, InternedString, FieldPattern};
 use super::parser::Parser;
-use super::error::{ParseError, ParseResult};
+use super::error::{ParseError, ParseResult, ParseContext, ExpectedToken, Suggestion, SuggestionCategory};
 
 impl<'a> Parser<'a> {
     /// Parse a pattern according to EBNF grammar
@@ -214,16 +214,28 @@ impl<'a> Parser<'a> {
                 
                 _ => {
                     Err(ParseError::UnexpectedToken {
-                        expected: vec!["pattern".to_string()],
+                        expected: vec![ExpectedToken::new("pattern", "wildcard, literal, identifier, or structured pattern")],
                         found: token.token_type.clone(),
                         position: start_pos,
+                        context: ParseContext::Pattern,
+                        suggestions: vec![
+                            Suggestion::new("Use a valid pattern", start_pos)
+                                .with_category(SuggestionCategory::Syntax)
+                        ],
+                        help: Some("Patterns can be wildcards (_), literals (42), identifiers (x), or structured patterns".to_string()),
                     })
                 }
             }
         } else {
             Err(ParseError::UnexpectedEof {
-                expected: vec!["pattern".to_string()],
+                expected: vec![ExpectedToken::new("pattern", "wildcard, literal, identifier, or structured pattern")],
                 position: self.current_position(),
+                context: ParseContext::Pattern,
+                unclosed_delimiters: Vec::new(),
+                suggestions: vec![
+                    Suggestion::new("Add a pattern", self.current_position())
+                        .with_category(SuggestionCategory::Syntax)
+                ],
             })
         }
     }
@@ -241,15 +253,27 @@ impl<'a> Parser<'a> {
                     self.advance()?;
                 } else {
                     return Err(ParseError::UnexpectedToken {
-                        expected: vec!["identifier".to_string()],
+                        expected: vec![ExpectedToken::new("identifier", "path segment for pattern matching")],
                         found: token.token_type.clone(),
                         position: self.current_position(),
+                        context: ParseContext::Pattern,
+                        suggestions: vec![
+                            Suggestion::new("Use a valid identifier", self.current_position())
+                                .with_category(SuggestionCategory::Syntax)
+                        ],
+                        help: Some("Path patterns require valid identifiers separated by ::".to_string()),
                     });
                 }
             } else {
                 return Err(ParseError::UnexpectedEof {
-                    expected: vec!["identifier".to_string()],
+                    expected: vec![ExpectedToken::new("identifier", "path segment for pattern matching")],
                     position: self.current_position(),
+                    context: ParseContext::Pattern,
+                    unclosed_delimiters: Vec::new(),
+                    suggestions: vec![
+                        Suggestion::new("Add identifier for path pattern", self.current_position())
+                            .with_category(SuggestionCategory::Syntax)
+                    ],
                 });
             }
         }
@@ -336,15 +360,27 @@ impl<'a> Parser<'a> {
                     }
                 } else {
                     return Err(ParseError::UnexpectedToken {
-                        expected: vec!["field name or ..".to_string()],
+                        expected: vec![ExpectedToken::new("field name or ..", "identifier for field pattern or rest pattern")],
                         found: token.token_type.clone(),
                         position: self.current_position(),
+                        context: ParseContext::Pattern,
+                        suggestions: vec![
+                            Suggestion::new("Use a valid field name", self.current_position())
+                                .with_category(SuggestionCategory::Syntax)
+                        ],
+                        help: Some("Struct patterns use field names or .. for remaining fields".to_string()),
                     });
                 }
             } else {
                 return Err(ParseError::UnexpectedEof {
-                    expected: vec!["field name or ..".to_string()],
+                    expected: vec![ExpectedToken::new("field name or ..", "identifier for field pattern or rest pattern")],
                     position: self.current_position(),
+                    context: ParseContext::Pattern,
+                    unclosed_delimiters: Vec::new(),
+                    suggestions: vec![
+                        Suggestion::new("Add field pattern or close struct pattern", self.current_position())
+                            .with_category(SuggestionCategory::Syntax)
+                    ],
                 });
             }
         }

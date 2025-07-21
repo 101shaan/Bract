@@ -3,7 +3,7 @@
 use crate::lexer::TokenType;
 use crate::ast::{Expr, Span, BinaryOp, UnaryOp, Literal};
 use super::parser::Parser;
-use super::error::{ParseError, ParseResult};
+use super::error::{ParseError, ParseResult, ParseContext, ExpectedToken, Suggestion, SuggestionCategory};
 
 impl<'a> Parser<'a> {
     /// Parse an expression (entry point for expression parsing)
@@ -375,15 +375,27 @@ impl<'a> Parser<'a> {
                                 }
                             } else {
                                 return Err(ParseError::UnexpectedToken {
-                                    expected: vec!["field name".to_string()],
+                                    expected: vec![ExpectedToken::new("field name", "identifier for field access")],
                                     found: field_token.token_type.clone(),
                                     position: field_token.position,
+                                    context: ParseContext::Expression,
+                                    suggestions: vec![
+                                        Suggestion::new("Use a valid field name", field_token.position)
+                                            .with_category(SuggestionCategory::Syntax)
+                                    ],
+                                    help: Some("Field access requires a valid identifier after the dot".to_string()),
                                 });
                             }
                         } else {
                             return Err(ParseError::UnexpectedEof {
-                                expected: vec!["field name".to_string()],
+                                expected: vec![ExpectedToken::new("field name", "identifier for field access")],
                                 position: self.current_position(),
+                                context: ParseContext::Expression,
+                                unclosed_delimiters: Vec::new(),
+                                suggestions: vec![
+                                    Suggestion::new("Add field name after dot", self.current_position())
+                                        .with_category(SuggestionCategory::Syntax)
+                                ],
                             });
                         }
                     }
@@ -423,15 +435,27 @@ impl<'a> Parser<'a> {
                                                 field
                                             } else {
                                                 return Err(ParseError::UnexpectedToken {
-                                                    expected: vec!["field name".to_string()],
+                                                    expected: vec![ExpectedToken::new("field name", "identifier for field access")],
                                                     found: token.token_type.clone(),
                                                     position: token.position,
+                                                    context: ParseContext::Expression,
+                                                    suggestions: vec![
+                                                        Suggestion::new("Use a valid field name", token.position)
+                                                            .with_category(SuggestionCategory::Syntax)
+                                                    ],
+                                                    help: Some("Field access requires a valid identifier after the dot".to_string()),
                                                 });
                                             }
                                         } else {
                                             return Err(ParseError::UnexpectedEof {
-                                                expected: vec!["field name".to_string()],
+                                                expected: vec![ExpectedToken::new("field name", "identifier for field access")],
                                                 position: self.current_position(),
+                                                context: ParseContext::Expression,
+                                                unclosed_delimiters: Vec::new(),
+                                                suggestions: vec![
+                                                    Suggestion::new("Add field name after dot", self.current_position())
+                                                        .with_category(SuggestionCategory::Syntax)
+                                                ],
                                             });
                                         };
                                         
@@ -664,12 +688,25 @@ impl<'a> Parser<'a> {
                 _ => Err(ParseError::InvalidSyntax {
                     message: "Expected expression".to_string(),
                     position: start_pos,
+                    context: ParseContext::Expression,
+                    suggestions: vec![
+                        Suggestion::new("Use a literal, identifier, or parenthesized expression", start_pos)
+                            .with_category(SuggestionCategory::Syntax)
+                    ],
+                    help: Some("Expressions can be literals (42, true, \"hello\"), identifiers (variable), or complex expressions".to_string()),
+                    related_errors: Vec::new(),
                 }),
             }
         } else {
             Err(ParseError::UnexpectedEof {
-                expected: vec!["expression".to_string()],
+                expected: vec![ExpectedToken::new("expression", "literal, identifier, or parenthesized expression")],
                 position: self.current_position(),
+                context: ParseContext::Expression,
+                unclosed_delimiters: Vec::new(),
+                suggestions: vec![
+                    Suggestion::new("Add an expression", self.current_position())
+                        .with_category(SuggestionCategory::Syntax)
+                ],
             })
         }
     }

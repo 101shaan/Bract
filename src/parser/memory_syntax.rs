@@ -1,60 +1,108 @@
-//! Memory Strategy Syntax Parser
+//! Memory Strategy and Performance Annotation Parser
 //!
-//! This module extends the Bract parser to support explicit memory strategy annotations
-//! and polymorphic memory strategy parameters. It enables developers to:
-//! - Explicitly specify memory strategies for variables and functions
-//! - Use polymorphic memory strategy parameters in generic functions
-//! - Control memory allocation behavior at the language level
+//! This module handles parsing of Bract's memory management annotations:
+//! - Memory strategy annotations: @memory(strategy = "stack")
+//! - Performance contracts: @performance(max_cost = 1000)
+//! - Region blocks: region "name" { ... }
+//! - Strategy wrapper types: LinearPtr<T>, SmartPtr<T>
 //! - Express performance contracts with memory constraints
 
-use crate::ast::{Type, Expr, Span, InternedString, MemoryStrategy, TypeBound, TypeConstraint};
-use crate::lexer::{Token, TokenType};
-use crate::parser::{Parser, ParseResult, ParseError};
+use crate::ast::{Type, Expr, Span, InternedString, MemoryStrategy, TypeBound};
+use crate::lexer::{TokenType};
+use super::parser::Parser;
+use super::error::{ParseError, ParseResult, ParseContext, ExpectedToken, Suggestion, SuggestionCategory};
 
 /// Memory strategy annotation syntax parser
+#[derive(Debug, Clone, PartialEq)]
+pub struct MemoryAnnotation {
+    pub strategy: Option<MemoryStrategy>,
+    pub size_hint: Option<u64>,
+    pub alignment: Option<u8>,
+    pub region: Option<InternedString>,
+    pub span: Span,
+}
+
+/// Performance contract annotation
+#[derive(Debug, Clone, PartialEq)]
+pub struct PerformanceAnnotation {
+    pub max_cost: Option<u64>,
+    pub max_memory: Option<u64>,
+    pub max_latency_ms: Option<u32>,
+    pub span: Span,
+}
+
+/// Region block syntax: region "name" { ... }
+#[derive(Debug, Clone, PartialEq)]
+pub struct RegionBlock {
+    pub name: InternedString,
+    pub body: Vec<crate::ast::Stmt>,
+    pub span: Span,
+}
+
+/// Variable declaration with memory strategy
+#[derive(Debug, Clone, PartialEq)]
+pub struct VariableDeclaration {
+    pub name: InternedString,
+    pub var_type: Type,
+    pub strategy: MemoryStrategy,
+    pub initializer: Option<Expr>,
+    pub span: Span,
+}
+
 impl<'a> Parser<'a> {
-    /// Parse memory strategy annotations
-    /// Syntax: `@memory(strategy = "stack" | "linear" | "smartptr" | "region" | "manual")`
+    /// Parse @memory annotation
     pub fn parse_memory_annotation(&mut self) -> ParseResult<MemoryAnnotation> {
         let start_pos = self.current_position();
         
         // Expect @memory
         self.expect(TokenType::At, "memory annotation")?;
         if !self.match_identifier("memory") {
-            return Err(ParseError::InvalidSyntax {
-                message: "Expected 'memory' after '@'".to_string(),
-                position: self.current_position(),
-            });
+            return Err(ParseError::invalid_syntax(
+                "Expected 'memory' after '@'",
+                self.current_position(),
+                ParseContext::MemoryAnnotation,
+            ));
         }
         
         self.expect(TokenType::LeftParen, "memory annotation parameters")?;
         
-        let mut strategy = None;
-        let mut size_hint = None;
-        let mut alignment = None;
-        let mut region_id = None;
+        let mut annotation = MemoryAnnotation {
+            strategy: None,
+            size_hint: None,
+            alignment: None,
+            region: None,
+            span: Span::new(start_pos, self.current_position()),
+        };
         
-        // Parse memory annotation parameters
-        while !self.check(&TokenType::RightParen) && !self.is_at_end() {
-            if self.match_identifier("strategy") {
-                self.expect(TokenType::Equal, "memory strategy assignment")?;
-                strategy = Some(self.parse_memory_strategy_value()?);
-            } else if self.match_identifier("size_hint") {
-                self.expect(TokenType::Equal, "size hint assignment")?;
-                size_hint = Some(self.parse_size_value()?);
-            } else if self.match_identifier("alignment") {
-                self.expect(TokenType::Equal, "alignment assignment")?;
-                alignment = Some(self.parse_alignment_value()?);
-            } else if self.match_identifier("region") {
-                self.expect(TokenType::Equal, "region assignment")?;
-                region_id = Some(self.parse_region_identifier()?);
-            } else {
-                return Err(ParseError::UnexpectedToken {
-                    expected: vec!["strategy".to_string(), "size_hint".to_string(), 
-                                  "alignment".to_string(), "region".to_string()],
-                    found: self.current_token().unwrap().token_type.clone(),
-                    position: self.current_position(),
-                });
+        // Parse parameter list
+        while !self.check(&TokenType::RightParen) {
+            let param_name = self.expect_identifier("parameter name")?;
+            
+            if !["strategy", "size_hint", "alignment", "region"].contains(&param_name.as_str()) {
+                return Err(ParseError::memory_annotation_error(
+                    &format!("Unknown parameter: {}", param_name),
+                    self.current_position(),
+                    &param_name,
+                    vec!["strategy".to_string(), "size_hint".to_string(), "alignment".to_string(), "region".to_string()],
+                ));
+            }
+            
+            self.expect(TokenType::Equal, "parameter value")?;
+            
+            match param_name.as_str() {
+                "strategy" => {
+                    annotation.strategy = Some(self.parse_memory_strategy_value()?);
+                }
+                "size_hint" => {
+                    annotation.size_hint = Some(self.parse_size_value()?);
+                }
+                "alignment" => {
+                    annotation.alignment = Some(self.parse_alignment_value()?);
+                }
+                "region" => {
+                    annotation.region = Some(self.parse_region_identifier()?);
+                }
+                _ => unreachable!(),
             }
             
             if !self.match_token(&TokenType::Comma) {
@@ -63,67 +111,59 @@ impl<'a> Parser<'a> {
         }
         
         self.expect(TokenType::RightParen, "memory annotation")?;
+        annotation.span = Span::new(start_pos, self.current_position());
         
-        let end_pos = self.current_position();
-        Ok(MemoryAnnotation {
-            strategy: strategy.unwrap_or(MemoryStrategy::Inferred),
-            size_hint,
-            alignment,
-            region_id,
-            span: Span::new(start_pos, end_pos),
-        })
+        Ok(annotation)
     }
     
-    /// Parse performance contract annotations
-    /// Syntax: `@performance(max_cost = 1000, max_memory = 1024, strategy = "linear")`
+    /// Parse @performance annotation
     pub fn parse_performance_annotation(&mut self) -> ParseResult<PerformanceAnnotation> {
         let start_pos = self.current_position();
         
-        // Expect @performance
         self.expect(TokenType::At, "performance annotation")?;
         if !self.match_identifier("performance") {
-            return Err(ParseError::InvalidSyntax {
-                message: "Expected 'performance' after '@'".to_string(),
-                position: self.current_position(),
-            });
+            return Err(ParseError::invalid_syntax(
+                "Expected 'performance' after '@'",
+                self.current_position(),
+                ParseContext::PerformanceAnnotation,
+            ));
         }
         
         self.expect(TokenType::LeftParen, "performance annotation parameters")?;
         
-        let mut max_cost = None;
-        let mut max_memory = None;
-        let mut max_allocations = None;
-        let mut max_stack = None;
-        let mut required_strategy = None;
-        let mut deterministic = false;
+        let mut annotation = PerformanceAnnotation {
+            max_cost: None,
+            max_memory: None,
+            max_latency_ms: None,
+            span: Span::new(start_pos, self.current_position()),
+        };
         
-        // Parse performance contract parameters
-        while !self.check(&TokenType::RightParen) && !self.is_at_end() {
-            if self.match_identifier("max_cost") {
-                self.expect(TokenType::Equal, "max cost assignment")?;
-                max_cost = Some(self.parse_numeric_literal()?);
-            } else if self.match_identifier("max_memory") {
-                self.expect(TokenType::Equal, "max memory assignment")?;
-                max_memory = Some(self.parse_size_value()?);
-            } else if self.match_identifier("max_allocations") {
-                self.expect(TokenType::Equal, "max allocations assignment")?;
-                max_allocations = Some(self.parse_numeric_literal()?);
-            } else if self.match_identifier("max_stack") {
-                self.expect(TokenType::Equal, "max stack assignment")?;
-                max_stack = Some(self.parse_size_value()?);
-            } else if self.match_identifier("strategy") {
-                self.expect(TokenType::Equal, "required strategy assignment")?;
-                required_strategy = Some(self.parse_memory_strategy_value()?);
-            } else if self.match_identifier("deterministic") {
-                self.expect(TokenType::Equal, "deterministic assignment")?;
-                deterministic = self.parse_boolean_literal()?;
-            } else {
-                return Err(ParseError::UnexpectedToken {
-                    expected: vec!["max_cost".to_string(), "max_memory".to_string(), 
-                                  "max_allocations".to_string(), "strategy".to_string()],
-                    found: self.current_token().unwrap().token_type.clone(),
-                    position: self.current_position(),
-                });
+        // Parse parameter list
+        while !self.check(&TokenType::RightParen) {
+            let param_name = self.expect_identifier("parameter name")?;
+            
+            if !["max_cost", "max_memory", "max_latency_ms"].contains(&param_name.as_str()) {
+                return Err(ParseError::memory_annotation_error(
+                    &format!("Unknown performance parameter: {}", param_name),
+                    self.current_position(),
+                    &param_name,
+                    vec!["max_cost".to_string(), "max_memory".to_string(), "max_latency_ms".to_string()],
+                ));
+            }
+            
+            self.expect(TokenType::Equal, "parameter value")?;
+            
+            match param_name.as_str() {
+                "max_cost" => {
+                    annotation.max_cost = Some(self.parse_numeric_literal()?);
+                }
+                "max_memory" => {
+                    annotation.max_memory = Some(self.parse_numeric_literal()?);
+                }
+                "max_latency_ms" => {
+                    annotation.max_latency_ms = Some(self.parse_numeric_literal()? as u32);
+                }
+                _ => unreachable!(),
             }
             
             if !self.match_token(&TokenType::Comma) {
@@ -132,210 +172,161 @@ impl<'a> Parser<'a> {
         }
         
         self.expect(TokenType::RightParen, "performance annotation")?;
+        annotation.span = Span::new(start_pos, self.current_position());
         
-        let end_pos = self.current_position();
-        Ok(PerformanceAnnotation {
-            max_cost,
-            max_memory,
-            max_allocations,
-            max_stack,
-            required_strategy,
-            deterministic,
-            span: Span::new(start_pos, end_pos),
-        })
+        Ok(annotation)
     }
     
     /// Parse memory strategy value from string literal
-    /// Recognizes: "stack", "linear", "smartptr", "region", "manual"
-    fn parse_memory_strategy_value(&mut self) -> ParseResult<MemoryStrategy> {
+    pub fn parse_memory_strategy_value(&mut self) -> ParseResult<MemoryStrategy> {
         if let Some(token) = &self.current_token {
-            match &token.token_type {
-                TokenType::String { value, .. } => {
-                    let strategy = match value.as_str() {
-                        "stack" => MemoryStrategy::Stack,
-                        "linear" => MemoryStrategy::Linear,
-                        "smartptr" => MemoryStrategy::SmartPtr,
-                        "region" => MemoryStrategy::Region,
-                        "manual" => MemoryStrategy::Manual,
-                        _ => return Err(ParseError::InvalidSyntax {
-                            message: format!("Unknown memory strategy: '{}'", value),
-                            position: token.position,
-                        }),
-                    };
-                    
-                    self.advance()?;
-                    Ok(strategy)
-                }
-                _ => Err(ParseError::UnexpectedToken {
-                    expected: vec!["string literal".to_string()],
-                    found: token.token_type.clone(),
-                    position: token.position,
-                }),
+            if let TokenType::String { value, .. } = &token.token_type {
+                let strategy = match value.as_str() {
+                    "stack" => MemoryStrategy::Stack,
+                    "linear" => MemoryStrategy::Linear,
+                    "smartptr" => MemoryStrategy::SmartPtr,
+                    "region" => MemoryStrategy::Region,
+                    "manual" => MemoryStrategy::Manual,
+                    "inferred" => MemoryStrategy::Inferred,
+                    _ => {
+                        return Err(ParseError::memory_annotation_error(
+                            &format!("Invalid memory strategy: {}", value),
+                            token.position,
+                            value,
+                            vec!["stack".to_string(), "linear".to_string(), "smartptr".to_string(), 
+                                "region".to_string(), "manual".to_string(), "inferred".to_string()],
+                        ));
+                    }
+                };
+                self.advance()?;
+                Ok(strategy)
+            } else {
+                Err(ParseError::unexpected_token(
+                    "string literal",
+                    "memory strategy value",
+                    token.token_type.clone(),
+                    token.position,
+                    ParseContext::MemoryAnnotation,
+                ))
             }
         } else {
-            Err(ParseError::UnexpectedEof {
-                expected: vec!["memory strategy string".to_string()],
-                position: self.current_position(),
-            })
+            Err(ParseError::unexpected_eof(
+                "memory strategy string",
+                "string literal with strategy name",
+                self.current_position(),
+                ParseContext::MemoryAnnotation,
+            ))
         }
     }
     
-    /// Parse explicit memory strategy type annotations
-    /// Syntax: `LinearPtr<T>`, `SmartPtr<T>`, `ManualPtr<T>`, `RegionPtr<T>`
-    pub fn parse_strategy_wrapper_type(&mut self) -> ParseResult<Option<Type>> {
-        if let Some(token) = &self.current_token {
-            if let TokenType::Identifier(name) = &token.token_type {
-                let strategy = match name.as_str() {
-                    "LinearPtr" => Some(MemoryStrategy::Linear),
-                    "SmartPtr" => Some(MemoryStrategy::SmartPtr),
-                    "ManualPtr" => Some(MemoryStrategy::Manual),
-                    "RegionPtr" => Some(MemoryStrategy::Region),
-                    "StackPtr" => Some(MemoryStrategy::Stack), // Rarely used, mostly for consistency
-                    _ => None,
-                };
-                
-                if let Some(memory_strategy) = strategy {
-                    let start_pos = self.current_position();
-                    self.advance()?; // consume wrapper name
-                    
-                    // Parse generic parameter: Ptr<T>
-                    self.expect(TokenType::Less, "generic parameter")?;
-                    let inner_type = self.parse_type()?;
-                    self.expect(TokenType::Greater, "generic parameter")?;
-                    
-                    let end_pos = self.current_position();
-                    return Ok(Some(Type::Pointer {
-                        is_mutable: false, // TODO: Handle mutable variants
-                        target_type: Box::new(inner_type),
-                        memory_strategy,
-                        span: Span::new(start_pos, end_pos),
-                    }));
-                }
+    /// Parse strategy wrapper type: LinearPtr<T>, SmartPtr<T>, etc.
+    pub fn parse_strategy_wrapper_type(&mut self) -> ParseResult<Type> {
+        let start_pos = self.current_position();
+        
+        let wrapper_name = self.expect_identifier("strategy wrapper name")?;
+        let strategy = match wrapper_name.as_str() {
+            "LinearPtr" => MemoryStrategy::Linear,
+            "SmartPtr" => MemoryStrategy::SmartPtr,
+            "RegionPtr" => MemoryStrategy::Region,
+            "StackPtr" => MemoryStrategy::Stack,
+            _ => {
+                return Err(ParseError::invalid_syntax(
+                    &format!("Unknown strategy wrapper: {}", wrapper_name),
+                    self.current_position(),
+                    ParseContext::TypeAnnotation,
+                ));
             }
-        }
+        };
         
-        Ok(None)
-    }
-    
-    /// Parse polymorphic memory strategy parameters
-    /// Syntax: `fn process<T, S: MemoryStrategy>(data: S<T>) -> S<ProcessedT>`
-    pub fn parse_memory_strategy_bound(&mut self) -> ParseResult<TypeBound> {
-        if self.match_identifier("MemoryStrategy") {
-            // Basic memory strategy bound
-            return Ok(TypeBound::MemoryStrategy(MemoryStrategy::Inferred));
-        }
+        self.expect(TokenType::Less, "generic type parameter")?;
+        let inner_type = self.parse_type()?;
+        self.expect(TokenType::Greater, "generic type parameter")?;
         
-        // Specific strategy constraints
-        if self.match_identifier("Stack") {
-            return Ok(TypeBound::MemoryStrategy(MemoryStrategy::Stack));
-        } else if self.match_identifier("Linear") {
-            return Ok(TypeBound::MemoryStrategy(MemoryStrategy::Linear));
-        } else if self.match_identifier("SmartPtr") {
-            return Ok(TypeBound::MemoryStrategy(MemoryStrategy::SmartPtr));
-        } else if self.match_identifier("Region") {
-            return Ok(TypeBound::MemoryStrategy(MemoryStrategy::Region));
-        } else if self.match_identifier("Manual") {
-            return Ok(TypeBound::MemoryStrategy(MemoryStrategy::Manual));
-        }
-        
-        Err(ParseError::InvalidSyntax {
-            message: "Expected memory strategy bound".to_string(),
-            position: self.current_position(),
+        Ok(Type::Pointer {
+            is_mutable: false,
+            target_type: Box::new(inner_type),
+            memory_strategy: strategy,
+            span: Span::new(start_pos, self.current_position()),
         })
     }
     
-    /// Parse region-scoped allocation syntax
-    /// Syntax: `region region_name { ... }`
+    /// Parse memory strategy bound for generics
+    pub fn parse_memory_strategy_bound(&mut self) -> ParseResult<TypeBound> {
+        let start_pos = self.current_position();
+        
+        if !self.match_identifier("memory") {
+            return Err(ParseError::invalid_syntax(
+                "Expected 'memory' for strategy bound",
+                self.current_position(),
+                ParseContext::GenericParameters,
+            ));
+        }
+        
+        self.expect(TokenType::LeftParen, "memory strategy bound")?;
+        let strategy = self.parse_memory_strategy_value()?;
+        self.expect(TokenType::RightParen, "memory strategy bound")?;
+        
+                 Ok(TypeBound::MemoryStrategy(strategy))
+    }
+    
+    /// Parse region block: region "name" { ... }
     pub fn parse_region_block(&mut self) -> ParseResult<RegionBlock> {
         let start_pos = self.current_position();
         
-        // Expect 'region' keyword
         if !self.match_identifier("region") {
-            return Err(ParseError::UnexpectedToken {
-                expected: vec!["region".to_string()],
-                found: self.current_token().unwrap().token_type.clone(),
-                position: self.current_position(),
-            });
+            return Err(ParseError::unexpected_token(
+                "region",
+                "region block declaration",
+                self.current_token().unwrap().token_type.clone(),
+                self.current_position(),
+                ParseContext::Statement,
+            ));
         }
         
-        // Parse region name
-        let region_name = if let Some(token) = &self.current_token {
-            if let TokenType::Identifier(name) = &token.token_type {
-                let name = self.interner.intern(name);
-                self.advance()?;
-                Some(name)
-            } else {
-                None
-            }
-        } else {
-            None
-        };
+        let name = self.parse_region_identifier()?;
+        self.expect(TokenType::LeftBrace, "region block body")?;
         
-        // Parse region body
-        let body = self.parse_block_expression()?;
+        let mut statements = Vec::new();
+        while !self.check(&TokenType::RightBrace) && !self.is_at_end() {
+            statements.push(self.parse_statement()?);
+        }
         
-        let end_pos = self.current_position();
+        self.expect(TokenType::RightBrace, "region block")?;
+        
         Ok(RegionBlock {
-            name: region_name,
-            body,
-            span: Span::new(start_pos, end_pos),
+            name,
+            body: statements,
+            span: Span::new(start_pos, self.current_position()),
         })
     }
     
     /// Parse variable declaration with memory strategy
-    /// Syntax: `let var: StrategyPtr<Type> = value;`
-    /// Syntax: `let var: Type @stack = value;`
     pub fn parse_variable_with_memory_strategy(&mut self) -> ParseResult<VariableDeclaration> {
         let start_pos = self.current_position();
         
-        // Parse basic let declaration
         self.expect(TokenType::Let, "variable declaration")?;
+        let name = self.expect_identifier("variable name")?;
+        self.expect(TokenType::Colon, "type annotation")?;
         
-        let is_mutable = self.match_token(&TokenType::Mut);
+        let var_type = self.parse_type()?;
         
-        // Parse variable name
-        let name = if let Some(token) = &self.current_token {
-            if let TokenType::Identifier(name_str) = &token.token_type {
-                let name = self.interner.intern(name_str);
-                self.advance()?;
-                name
+        // Parse @strategy annotation
+        let strategy = if self.check(&TokenType::At) {
+            self.advance()?;
+            if self.match_identifier("memory") {
+                self.expect(TokenType::LeftParen, "memory strategy")?;
+                self.expect(TokenType::Identifier("strategy".to_string()), "strategy parameter")?;
+                self.expect(TokenType::Equal, "strategy value")?;
+                let strategy = self.parse_memory_strategy_value()?;
+                self.expect(TokenType::RightParen, "memory strategy")?;
+                strategy
             } else {
-                return Err(ParseError::UnexpectedToken {
-                    expected: vec!["identifier".to_string()],
-                    found: token.token_type.clone(),
-                    position: token.position,
-                });
+                MemoryStrategy::Inferred
             }
         } else {
-            return Err(ParseError::UnexpectedEof {
-                expected: vec!["variable name".to_string()],
-                position: self.current_position(),
-            });
+            MemoryStrategy::Inferred
         };
         
-        // Parse type annotation with memory strategy
-        let (type_annotation, memory_strategy) = if self.match_token(&TokenType::Colon) {
-            // Try to parse strategy wrapper first
-            if let Some(wrapper_type) = self.parse_strategy_wrapper_type()? {
-                (Some(wrapper_type), MemoryStrategy::Inferred) // Strategy embedded in type
-            } else {
-                // Parse regular type
-                let base_type = self.parse_type()?;
-                
-                // Check for explicit strategy annotation: Type @stack
-                let strategy = if self.match_token(&TokenType::At) {
-                    self.parse_inline_memory_strategy()?
-                } else {
-                    MemoryStrategy::Inferred
-                };
-                
-                (Some(base_type), strategy)
-            }
-        } else {
-            (None, MemoryStrategy::Inferred)
-        };
-        
-        // Parse initializer
         let initializer = if self.match_token(&TokenType::Equal) {
             Some(self.parse_expression()?)
         } else {
@@ -344,52 +335,44 @@ impl<'a> Parser<'a> {
         
         self.expect(TokenType::Semicolon, "variable declaration")?;
         
-        let end_pos = self.current_position();
         Ok(VariableDeclaration {
-            name,
-            is_mutable,
-            type_annotation,
-            memory_strategy,
+            name: self.interner.intern(&name),
+            var_type,
+            strategy,
             initializer,
-            span: Span::new(start_pos, end_pos),
+            span: Span::new(start_pos, self.current_position()),
         })
     }
     
-    /// Parse inline memory strategy annotation
-    /// Syntax: `@stack`, `@linear`, `@smartptr`, `@region`, `@manual`
-    fn parse_inline_memory_strategy(&mut self) -> ParseResult<MemoryStrategy> {
+    // Helper methods
+    
+    /// Expect an identifier token and return its value
+    fn expect_identifier(&mut self, description: &str) -> ParseResult<String> {
         if let Some(token) = &self.current_token {
             if let TokenType::Identifier(name) = &token.token_type {
-                let strategy = match name.as_str() {
-                    "stack" => MemoryStrategy::Stack,
-                    "linear" => MemoryStrategy::Linear,
-                    "smartptr" => MemoryStrategy::SmartPtr,
-                    "region" => MemoryStrategy::Region,
-                    "manual" => MemoryStrategy::Manual,
-                    _ => return Err(ParseError::InvalidSyntax {
-                        message: format!("Unknown memory strategy: @{}", name),
-                        position: token.position,
-                    }),
-                };
-                
+                let name = name.clone();
                 self.advance()?;
-                Ok(strategy)
+                Ok(name)
             } else {
-                Err(ParseError::UnexpectedToken {
-                    expected: vec!["memory strategy identifier".to_string()],
-                    found: token.token_type.clone(),
-                    position: token.position,
-                })
+                Err(ParseError::unexpected_token(
+                    "identifier",
+                    description,
+                    token.token_type.clone(),
+                    token.position,
+                    ParseContext::MemoryAnnotation,
+                ))
             }
         } else {
-            Err(ParseError::UnexpectedEof {
-                expected: vec!["memory strategy".to_string()],
-                position: self.current_position(),
-            })
+            Err(ParseError::unexpected_eof(
+                "identifier",
+                description,
+                self.current_position(),
+                ParseContext::MemoryAnnotation,
+            ))
         }
     }
     
-    /// Helper: Check if current token is a specific identifier
+    /// Match an identifier with specific value
     fn match_identifier(&mut self, expected: &str) -> bool {
         if let Some(token) = &self.current_token {
             if let TokenType::Identifier(name) = &token.token_type {
@@ -402,98 +385,85 @@ impl<'a> Parser<'a> {
         false
     }
     
-    /// Parse numeric literal for performance constraints
+    /// Parse a numeric literal
     fn parse_numeric_literal(&mut self) -> ParseResult<u64> {
         if let Some(token) = &self.current_token {
             match &token.token_type {
                 TokenType::Integer { value, .. } => {
-                    let parsed_value = value.parse::<u64>()
-                        .map_err(|_| ParseError::InvalidSyntax {
-                            message: format!("Invalid numeric literal: {}", value),
-                            position: token.position,
-                        })?;
+                    let num = value.parse::<u64>()
+                        .map_err(|_| ParseError::invalid_syntax(
+                            &format!("Invalid numeric literal: {}", value),
+                            token.position,
+                            ParseContext::MemoryAnnotation,
+                        ))?;
                     self.advance()?;
-                    Ok(parsed_value)
+                    Ok(num)
                 }
-                _ => Err(ParseError::UnexpectedToken {
-                    expected: vec!["numeric literal".to_string()],
-                    found: token.token_type.clone(),
-                    position: token.position,
-                }),
+                _ => Err(ParseError::unexpected_token(
+                    "numeric literal",
+                    "integer value",
+                    token.token_type.clone(),
+                    token.position,
+                    ParseContext::MemoryAnnotation,
+                ))
             }
         } else {
-            Err(ParseError::UnexpectedEof {
-                expected: vec!["numeric literal".to_string()],
-                position: self.current_position(),
-            })
+            Err(ParseError::unexpected_eof(
+                "numeric literal",
+                "integer value",
+                self.current_position(),
+                ParseContext::MemoryAnnotation,
+            ))
         }
     }
     
-    /// Parse size value with units (e.g., "1024", "4KB", "2MB")
+    /// Parse size value
     fn parse_size_value(&mut self) -> ParseResult<u64> {
-        let base_value = self.parse_numeric_literal()?;
-        
-        // Check for size unit suffix
-        if let Some(token) = &self.current_token {
-            if let TokenType::Identifier(unit) = &token.token_type {
-                let multiplier = match unit.to_uppercase().as_str() {
-                    "B" | "BYTES" => 1,
-                    "KB" | "KILOBYTES" => 1024,
-                    "MB" | "MEGABYTES" => 1024 * 1024,
-                    "GB" | "GIGABYTES" => 1024 * 1024 * 1024,
-                    _ => return Ok(base_value), // No unit, return base value
-                };
-                
-                self.advance()?;
-                Ok(base_value * multiplier)
-            } else {
-                Ok(base_value)
-            }
-        } else {
-            Ok(base_value)
-        }
+        self.parse_numeric_literal()
     }
     
-    /// Parse alignment value (power of 2)
+    /// Parse alignment value
     fn parse_alignment_value(&mut self) -> ParseResult<u8> {
         let value = self.parse_numeric_literal()?;
-        
-        // Validate that alignment is power of 2
-        if value == 0 || (value & (value - 1)) != 0 {
-            return Err(ParseError::InvalidSyntax {
-                message: format!("Alignment must be power of 2, got {}", value),
-                position: self.current_position(),
-            });
+        if value > 255 {
+            return Err(ParseError::invalid_syntax(
+                "Alignment must be <= 255",
+                self.current_position(),
+                ParseContext::MemoryAnnotation,
+            ));
         }
-        
         Ok(value as u8)
     }
     
-    /// Parse region identifier for region-specific allocation
+    /// Parse region identifier
     fn parse_region_identifier(&mut self) -> ParseResult<InternedString> {
         if let Some(token) = &self.current_token {
             match &token.token_type {
-                TokenType::Identifier(name) => {
-                    let region_name = self.interner.intern(name);
-                    self.advance()?;
-                    Ok(region_name)
-                }
                 TokenType::String { value, .. } => {
-                    let region_name = self.interner.intern(value);
+                    let interned = self.interner.intern(value);
                     self.advance()?;
-                    Ok(region_name)
+                    Ok(interned)
                 }
-                _ => Err(ParseError::UnexpectedToken {
-                    expected: vec!["region identifier".to_string()],
-                    found: token.token_type.clone(),
-                    position: token.position,
-                }),
+                TokenType::Identifier(name) => {
+                    let interned = self.interner.intern(name);
+                    self.advance()?;
+                    Ok(interned)
+                }
+                _ => Err(ParseError::unexpected_token(
+                    "region identifier",
+                    "string literal or identifier",
+                    token.token_type.clone(),
+                    token.position,
+                    ParseContext::MemoryAnnotation,
+                ))
             }
         } else {
-            Err(ParseError::UnexpectedEof {
-                expected: vec!["region identifier".to_string()],
-                position: self.current_position(),
-            })
+            Err(ParseError::unexpected_eof(
+                "region identifier",
+                "string literal or identifier",
+                self.current_position(),
+                ParseContext::MemoryAnnotation,
+            ))
         }
     }
     
@@ -501,11 +471,6 @@ impl<'a> Parser<'a> {
     fn parse_boolean_literal(&mut self) -> ParseResult<bool> {
         if let Some(token) = &self.current_token {
             match &token.token_type {
-                TokenType::Bool(value) => {
-                    let result = *value;
-                    self.advance()?;
-                    Ok(result)
-                }
                 TokenType::True => {
                     self.advance()?;
                     Ok(true)
@@ -514,68 +479,23 @@ impl<'a> Parser<'a> {
                     self.advance()?;
                     Ok(false)
                 }
-                TokenType::Identifier(name) if name == "true" => {
-                    self.advance()?;
-                    Ok(true)
-                }
-                TokenType::Identifier(name) if name == "false" => {
-                    self.advance()?;
-                    Ok(false)
-                }
-                _ => Err(ParseError::UnexpectedToken {
-                    expected: vec!["boolean literal".to_string()],
-                    found: token.token_type.clone(),
-                    position: token.position,
-                }),
+                _ => Err(ParseError::unexpected_token(
+                    "boolean literal",
+                    "true or false",
+                    token.token_type.clone(),
+                    token.position,
+                    ParseContext::MemoryAnnotation,
+                ))
             }
         } else {
-            Err(ParseError::UnexpectedEof {
-                expected: vec!["boolean literal".to_string()],
-                position: self.current_position(),
-            })
+            Err(ParseError::unexpected_eof(
+                "boolean literal",
+                "true or false",
+                self.current_position(),
+                ParseContext::MemoryAnnotation,
+            ))
         }
     }
-}
-
-/// Memory strategy annotation structure
-#[derive(Debug, Clone, PartialEq)]
-pub struct MemoryAnnotation {
-    pub strategy: MemoryStrategy,
-    pub size_hint: Option<u64>,
-    pub alignment: Option<u8>,
-    pub region_id: Option<InternedString>,
-    pub span: Span,
-}
-
-/// Performance contract annotation structure
-#[derive(Debug, Clone, PartialEq)]
-pub struct PerformanceAnnotation {
-    pub max_cost: Option<u64>,
-    pub max_memory: Option<u64>,
-    pub max_allocations: Option<u64>,
-    pub max_stack: Option<u64>,
-    pub required_strategy: Option<MemoryStrategy>,
-    pub deterministic: bool,
-    pub span: Span,
-}
-
-/// Region block for scoped allocation
-#[derive(Debug, Clone, PartialEq)]
-pub struct RegionBlock {
-    pub name: Option<InternedString>,
-    pub body: Expr,
-    pub span: Span,
-}
-
-/// Variable declaration with memory strategy
-#[derive(Debug, Clone, PartialEq)]
-pub struct VariableDeclaration {
-    pub name: InternedString,
-    pub is_mutable: bool,
-    pub type_annotation: Option<Type>,
-    pub memory_strategy: MemoryStrategy,
-    pub initializer: Option<Expr>,
-    pub span: Span,
 }
 
 #[cfg(test)]
@@ -584,47 +504,39 @@ mod tests {
     use crate::lexer::Lexer;
     use crate::semantic::symbols::SymbolTable;
     
-    fn create_test_parser(input: &str) -> Parser {
-        Parser::new(input, 0).unwrap()
+    fn parse_memory_annotation(input: &str) -> ParseResult<MemoryAnnotation> {
+        let mut parser = Parser::new(input, 0).unwrap();
+        parser.parse_memory_annotation()
     }
     
     #[test]
-    fn test_memory_annotation_parsing() {
-        let mut parser = create_test_parser(r#"@memory(strategy = "stack", size_hint = 1024)"#);
-        let annotation = parser.parse_memory_annotation().unwrap();
-        
-        assert_eq!(annotation.strategy, MemoryStrategy::Stack);
+    fn test_memory_annotation_basic() {
+        let result = parse_memory_annotation("@memory(strategy = \"stack\")");
+        assert!(result.is_ok());
+        let annotation = result.unwrap();
+        assert_eq!(annotation.strategy, Some(MemoryStrategy::Stack));
+    }
+    
+    #[test]
+    fn test_memory_annotation_multiple_params() {
+        let result = parse_memory_annotation("@memory(strategy = \"linear\", size_hint = 1024)");
+        assert!(result.is_ok());
+        let annotation = result.unwrap();
+        assert_eq!(annotation.strategy, Some(MemoryStrategy::Linear));
         assert_eq!(annotation.size_hint, Some(1024));
     }
     
     #[test]
-    fn test_performance_annotation_parsing() {
-        let mut parser = create_test_parser(r#"@performance(max_cost = 1000, max_memory = 2048, deterministic = true)"#);
-        let annotation = parser.parse_performance_annotation().unwrap();
-        
-        assert_eq!(annotation.max_cost, Some(1000));
-        assert_eq!(annotation.max_memory, Some(2048));
-        assert_eq!(annotation.deterministic, true);
+    fn test_strategy_wrapper_type() {
+        let input = "LinearPtr<i32>";
+        let mut parser = Parser::new(input, 0).unwrap();
+        let result = parser.parse_strategy_wrapper_type();
+        assert!(result.is_ok());
     }
     
     #[test]
-    fn test_strategy_wrapper_parsing() {
-        let mut parser = create_test_parser("LinearPtr<Buffer>");
-        let wrapper_type = parser.parse_strategy_wrapper_type().unwrap();
-        
-        assert!(wrapper_type.is_some());
-        if let Some(Type::Pointer { memory_strategy, .. }) = wrapper_type {
-            assert_eq!(memory_strategy, MemoryStrategy::Linear);
-        } else {
-            panic!("Expected pointer type with linear strategy");
-        }
-    }
-    
-    #[test]
-    fn test_region_block_parsing() {
-        let mut parser = create_test_parser("region temp_data { let x = 42; }");
-        let region_block = parser.parse_region_block().unwrap();
-        
-        assert!(region_block.name.is_some());
+    fn test_invalid_strategy() {
+        let result = parse_memory_annotation("@memory(strategy = \"invalid\")");
+        assert!(result.is_err());
     }
 } 

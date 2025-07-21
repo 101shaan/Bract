@@ -2,7 +2,10 @@
 
 use crate::lexer::{Lexer, Token, TokenType, Position};
 use crate::ast::{Module, Item, Expr, Stmt, Span, Visibility, Parameter, InternedString, Pattern, Type, MemoryStrategy};
-use super::error::{ParseError, ParseResult};
+use super::error::{
+    ParseError, ParseResult, ParseContext, ExpectedToken, Suggestion, SuggestionCategory,
+    suggest_similar_identifiers, suggest_for_context, UnclosedDelimiter
+};
 use std::collections::HashMap;
 
 /// String interner for efficient string storage
@@ -41,6 +44,12 @@ pub struct Parser<'a> {
     pub(super) current_token: Option<Token>,
     pub(super) interner: StringInterner,
     errors: Vec<ParseError>,
+    /// Current parsing context for better error messages
+    context_stack: Vec<ParseContext>,
+    /// Delimiter stack for tracking unclosed delimiters
+    delimiter_stack: Vec<(TokenType, Position, String)>,
+    /// Keywords for similarity matching
+    keywords: Vec<&'static str>,
 }
 
 impl<'a> Parser<'a> {
@@ -52,11 +61,24 @@ impl<'a> Parser<'a> {
             Err(err) => return Err(ParseError::from(err)),
         };
         
+        let keywords = vec![
+            "fn", "struct", "enum", "impl", "trait", "type", "const", "static",
+            "let", "mut", "if", "else", "while", "for", "loop", "match",
+            "return", "break", "continue", "where", "use", "mod", "pub",
+            "self", "Self", "super", "crate", "as", "in", "ref", "move",
+            "true", "false", "null", "i8", "i16", "i32", "i64", "i128",
+            "u8", "u16", "u32", "u64", "u128", "f32", "f64", "bool",
+            "char", "str", "String", "Vec", "Option", "Result"
+        ];
+        
         Ok(Parser {
             lexer,
             current_token,
             interner: StringInterner::new(),
             errors: Vec::new(),
+            context_stack: vec![ParseContext::TopLevel],
+            delimiter_stack: Vec::new(),
+            keywords,
         })
     }
     
@@ -72,7 +94,17 @@ impl<'a> Parser<'a> {
                 self.current_token = Some(token);
                 Ok(())
             }
-            Err(err) => Err(ParseError::from(err))
+            Err(err) => {
+                let enhanced_error = ParseError::LexerError {
+                    error: err,
+                    suggestions: vec![
+                        Suggestion::new("Check for invalid characters in source code", self.current_position())
+                            .with_category(SuggestionCategory::Syntax)
+                    ],
+                    help: Some("Lexer errors often indicate invalid character sequences or encoding issues.".to_string()),
+                };
+                Err(enhanced_error)
+            }
         }
     }
     
@@ -102,25 +134,130 @@ impl<'a> Parser<'a> {
         }
     }
     
-    /// Expect a specific token type and consume it, or return an error
-    pub fn expect(&mut self, expected: TokenType, _context: &str) -> ParseResult<Token> {
+    /// Enhanced expect method with context-aware error messages
+    pub fn expect(&mut self, expected: TokenType, description: &str) -> ParseResult<Token> {
         if let Some(token) = &self.current_token {
             if std::mem::discriminant(&token.token_type) == std::mem::discriminant(&expected) {
                 let token = token.clone();
+                
+                // Track delimiters
+                self.track_delimiter(&token.token_type, token.position);
+                
                 self.advance()?;
                 Ok(token)
             } else {
+                let context = self.current_context().clone();
+                let position = token.position;
+                let found = token.token_type.clone();
+                
+                // Generate intelligent suggestions
+                let mut suggestions = suggest_for_context(&context, &found);
+                
+                // Add similarity-based suggestions for identifiers
+                if let TokenType::Identifier(ref name) = found {
+                    let similar = suggest_similar_identifiers(name, &self.keywords);
+                    for similar_word in similar {
+                        suggestions.push(
+                            Suggestion::new(&format!("Did you mean '{}'?", similar_word), position)
+                                .with_replacement(&similar_word)
+                                .with_category(SuggestionCategory::Syntax)
+                                .with_confidence(0.7)
+                        );
+                    }
+                }
+                
+                // Context-specific help
+                let help = match (&expected, &context) {
+                    (TokenType::Semicolon, ParseContext::Statement) => {
+                        Some("Most statements in Bract must end with a semicolon (;)".to_string())
+                    }
+                    (TokenType::LeftBrace, ParseContext::FunctionBody) => {
+                        Some("Function bodies must be enclosed in braces { }".to_string())
+                    }
+                    (TokenType::Colon, ParseContext::TypeAnnotation) => {
+                        Some("Type annotations are specified with a colon (:) followed by the type".to_string())
+                    }
+                    _ => None,
+                };
+                
                 Err(ParseError::UnexpectedToken {
-                    expected: vec![format!("{:?}", expected)],
-                    found: token.token_type.clone(),
-                    position: token.position,
+                    expected: vec![ExpectedToken::new(&format!("{:?}", expected), description)],
+                    found,
+                    position,
+                    context,
+                    suggestions,
+                    help,
                 })
             }
         } else {
+            let context = self.current_context().clone();
+            let position = self.lexer.get_position();
+            
+            // Check for unclosed delimiters
+            let unclosed_delimiters: Vec<UnclosedDelimiter> = self.delimiter_stack
+                .iter()
+                .map(|(delim, pos, ctx)| UnclosedDelimiter {
+                    delimiter: delim.clone(),
+                    open_position: *pos,
+                    context: ctx.clone(),
+                })
+                .collect();
+            
+            let suggestions = if !unclosed_delimiters.is_empty() {
+                vec![Suggestion::new("Close unclosed delimiters before end of file", position)
+                    .with_category(SuggestionCategory::Syntax)]
+            } else {
+                vec![Suggestion::new(&format!("Add {} before end of file", description), position)
+                    .with_category(SuggestionCategory::Syntax)]
+            };
+            
             Err(ParseError::UnexpectedEof {
-                expected: vec![format!("{:?}", expected)],
-                position: self.lexer.get_position(),
+                expected: vec![ExpectedToken::new(&format!("{:?}", expected), description)],
+                position,
+                context,
+                unclosed_delimiters,
+                suggestions,
             })
+        }
+    }
+    
+    /// Track opening/closing delimiters for better error messages
+    fn track_delimiter(&mut self, token_type: &TokenType, position: Position) {
+        match token_type {
+            TokenType::LeftParen => {
+                self.delimiter_stack.push((TokenType::RightParen, position, format!("{}", self.current_context())));
+            }
+            TokenType::LeftBrace => {
+                self.delimiter_stack.push((TokenType::RightBrace, position, format!("{}", self.current_context())));
+            }
+            TokenType::LeftBracket => {
+                self.delimiter_stack.push((TokenType::RightBracket, position, format!("{}", self.current_context())));
+            }
+            TokenType::RightParen | TokenType::RightBrace | TokenType::RightBracket => {
+                if let Some((expected_closer, _, _)) = self.delimiter_stack.last() {
+                    if std::mem::discriminant(token_type) == std::mem::discriminant(expected_closer) {
+                        self.delimiter_stack.pop();
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    
+    /// Get current parsing context
+    pub fn current_context(&self) -> &ParseContext {
+        self.context_stack.last().unwrap_or(&ParseContext::TopLevel)
+    }
+    
+    /// Enter a new parsing context
+    pub fn enter_context(&mut self, context: ParseContext) {
+        self.context_stack.push(context);
+    }
+    
+    /// Exit current parsing context
+    pub fn exit_context(&mut self) {
+        if self.context_stack.len() > 1 {
+            self.context_stack.pop();
         }
     }
     
@@ -147,41 +284,110 @@ impl<'a> Parser<'a> {
         self.interner
     }
     
-    /// Synchronize parser state after an error (error recovery)
+    /// Enhanced synchronize parser state after an error (error recovery)
     pub fn synchronize(&mut self) {
-        while !self.is_at_end() {
+        let mut recovery_attempts = 0;
+        const MAX_RECOVERY_ATTEMPTS: usize = 10;
+        
+        while !self.is_at_end() && recovery_attempts < MAX_RECOVERY_ATTEMPTS {
             if let Some(token) = &self.current_token {
                 match &token.token_type {
+                    // Primary recovery points
                     TokenType::Semicolon => {
                         self.advance().unwrap_or(());
                         return;
                     }
+                    
+                    // Item-level recovery points
                     TokenType::Fn | TokenType::Struct | TokenType::Enum | 
+                    TokenType::Type | TokenType::Const | TokenType::Impl |
+                    TokenType::Mod | TokenType::Use => {
+                        // Reset to top-level context
+                        self.context_stack.clear();
+                        self.context_stack.push(ParseContext::TopLevel);
+                        return;
+                    }
+                    
+                    // Statement-level recovery points
                     TokenType::Let | TokenType::If | TokenType::While | 
-                    TokenType::For | TokenType::Return => return,
+                    TokenType::For | TokenType::Return | TokenType::Break |
+                    TokenType::Continue => return,
+                    
+                    // Block boundaries
+                    TokenType::RightBrace => {
+                        self.advance().unwrap_or(());
+                        return;
+                    }
+                    
                     _ => {
                         self.advance().unwrap_or(());
+                        recovery_attempts += 1;
                     }
                 }
             } else {
                 break;
             }
         }
+        
+        // If we couldn't recover properly, clear contexts
+        if recovery_attempts >= MAX_RECOVERY_ATTEMPTS {
+            self.context_stack.clear();
+            self.context_stack.push(ParseContext::TopLevel);
+        }
     }
     
-    /// Parse a complete module (top-level entry point)
+    /// Parse a complete module (top-level entry point) with enhanced error handling
     pub fn parse_module(&mut self) -> ParseResult<Module> {
         let start_pos = self.current_position();
         let mut items = Vec::new();
+        let mut error_count = 0;
+        const MAX_ERRORS_PER_MODULE: usize = 50;
         
-        while !self.is_at_end() {
+        self.enter_context(ParseContext::TopLevel);
+        
+        while !self.is_at_end() && error_count < MAX_ERRORS_PER_MODULE {
             match self.parse_item() {
-                Ok(item) => items.push(item),
+                Ok(item) => {
+                    items.push(item);
+                    // Reset error count on successful parse
+                    error_count = 0;
+                }
                 Err(err) => {
                     self.add_error(err);
                     self.synchronize();
+                    error_count += 1;
+                    
+                    // Prevent infinite error loops
+                    if error_count >= 5 {
+                        // Try a more aggressive recovery
+                        while !self.is_at_end() {
+                            if let Some(token) = &self.current_token {
+                                if matches!(token.token_type, 
+                                    TokenType::Fn | TokenType::Struct | TokenType::Enum |
+                                    TokenType::Type | TokenType::Const | TokenType::Impl |
+                                    TokenType::Mod | TokenType::Use
+                                ) {
+                                    break;
+                                }
+                                self.advance().unwrap_or(());
+                            } else {
+                                break;
+                            }
+                        }
+                    }
                 }
             }
+        }
+        
+        self.exit_context();
+        
+        // Report if we hit the error limit
+        if error_count >= MAX_ERRORS_PER_MODULE {
+            self.add_error(ParseError::InternalError {
+                message: "Too many parse errors, stopping module parsing".to_string(),
+                position: self.current_position(),
+                debug_info: Some(format!("Reached maximum error limit of {}", MAX_ERRORS_PER_MODULE)),
+            });
         }
         
         let end_pos = self.current_position();
@@ -191,7 +397,7 @@ impl<'a> Parser<'a> {
         })
     }
     
-    /// Parse a top-level item (function, struct, etc.)
+    /// Parse a top-level item (function, struct, etc.) with enhanced error handling
     pub fn parse_item(&mut self) -> ParseResult<Item> {
         let start_pos = self.current_position();
         
@@ -204,6 +410,7 @@ impl<'a> Parser<'a> {
         
         // Skip annotations for now (parse but don't use them yet)
         while self.check(&TokenType::At) {
+            self.enter_context(ParseContext::MemoryAnnotation);
             // Skip annotation - for now just advance past it
             while !self.is_at_end() && !self.check(&TokenType::Fn) && !self.check(&TokenType::Struct) 
                 && !self.check(&TokenType::Enum) && !self.check(&TokenType::Type) 
@@ -211,28 +418,108 @@ impl<'a> Parser<'a> {
                 && !self.check(&TokenType::Impl) && !self.check(&TokenType::Use) {
                 self.advance()?;
             }
+            self.exit_context();
         }
         
         if let Some(token) = &self.current_token {
             match &token.token_type {
-                TokenType::Fn => self.parse_function(visibility, start_pos),
-                TokenType::Struct => self.parse_struct(visibility, start_pos),
-                TokenType::Enum => self.parse_enum(visibility, start_pos),
+                TokenType::Fn => {
+                    self.enter_context(ParseContext::FunctionDeclaration);
+                    let result = self.parse_function(visibility, start_pos);
+                    self.exit_context();
+                    result
+                },
+                TokenType::Struct => {
+                    self.enter_context(ParseContext::StructDeclaration);
+                    let result = self.parse_struct(visibility, start_pos);
+                    self.exit_context();
+                    result
+                },
+                TokenType::Enum => {
+                    self.enter_context(ParseContext::EnumDeclaration);
+                    let result = self.parse_enum(visibility, start_pos);
+                    self.exit_context();
+                    result
+                },
                 TokenType::Type => self.parse_type_alias(visibility, start_pos),
                 TokenType::Const => self.parse_const(visibility, start_pos),
-                TokenType::Mod => self.parse_module_decl(visibility, start_pos),
-                TokenType::Impl => self.parse_impl_block(start_pos),
-                TokenType::Use => self.parse_use_decl(start_pos),
-                _ => Err(ParseError::UnexpectedToken {
-                    expected: vec!["item declaration".to_string()],
-                    found: token.token_type.clone(),
-                    position: token.position,
-                }),
+                TokenType::Mod => {
+                    self.enter_context(ParseContext::ModuleDeclaration);
+                    let result = self.parse_module_decl(visibility, start_pos);
+                    self.exit_context();
+                    result
+                },
+                TokenType::Impl => {
+                    self.enter_context(ParseContext::ImplBlock);
+                    let result = self.parse_impl_block(start_pos);
+                    self.exit_context();
+                    result
+                },
+                TokenType::Use => {
+                    self.enter_context(ParseContext::UseDeclaration);
+                    let result = self.parse_use_decl(start_pos);
+                    self.exit_context();
+                    result
+                },
+                _ => {
+                    let context = self.current_context().clone();
+                    let suggestions = vec![
+                        Suggestion::new("Start with a declaration keyword (fn, struct, enum, etc.)", token.position)
+                            .with_category(SuggestionCategory::Syntax),
+                        Suggestion::new("Check if this should be inside a function body", token.position)
+                            .with_category(SuggestionCategory::Semantics),
+                    ];
+                    
+                    // Add keyword suggestions if it's an identifier
+                    let mut enhanced_suggestions = suggestions;
+                    if let TokenType::Identifier(ref name) = token.token_type {
+                        let keywords = ["fn", "struct", "enum", "impl", "type", "const", "mod", "use"];
+                        let similar = suggest_similar_identifiers(name, &keywords);
+                        for similar_keyword in similar {
+                            enhanced_suggestions.push(
+                                Suggestion::new(&format!("Did you mean '{}'?", similar_keyword), token.position)
+                                    .with_replacement(&similar_keyword)
+                                    .with_category(SuggestionCategory::Syntax)
+                                    .with_confidence(0.8)
+                            );
+                        }
+                    }
+                    
+                    Err(ParseError::UnexpectedToken {
+                        expected: vec![
+                            ExpectedToken::new("fn", "function declaration").with_example("fn main() {}"),
+                            ExpectedToken::new("struct", "structure declaration").with_example("struct Point { x: i32, y: i32 }"),
+                            ExpectedToken::new("enum", "enumeration declaration").with_example("enum Option<T> { Some(T), None }"),
+                            ExpectedToken::new("impl", "implementation block").with_example("impl SomeStruct { }"),
+                            ExpectedToken::new("type", "type alias").with_example("type MyInt = i32;"),
+                            ExpectedToken::new("const", "constant declaration").with_example("const PI: f64 = 3.14159;"),
+                            ExpectedToken::new("mod", "module declaration").with_example("mod my_module { }"),
+                            ExpectedToken::new("use", "use declaration").with_example("use std::collections::HashMap;"),
+                        ],
+                        found: token.token_type.clone(),
+                        position: token.position,
+                        context,
+                        suggestions: enhanced_suggestions,
+                        help: Some("Items are top-level declarations like functions, structs, and enums that form the building blocks of your program.".to_string()),
+                    })
+                }
             }
         } else {
+            let context = self.current_context().clone();
+            let suggestions = vec![
+                Suggestion::new("Add a top-level declaration", self.current_position())
+                    .with_category(SuggestionCategory::Syntax)
+                    .with_replacement("fn main() {\n    // Your code here\n}"),
+            ];
+            
             Err(ParseError::UnexpectedEof {
-                expected: vec!["item declaration".to_string()],
+                expected: vec![
+                    ExpectedToken::new("item declaration", "function, struct, enum, or other top-level construct")
+                ],
                 position: self.current_position(),
+                context,
+                unclosed_delimiters: Vec::new(),
+                suggestions,
             })
         }
     }
@@ -249,6 +536,13 @@ impl<'a> Parser<'a> {
             return Err(ParseError::InvalidSyntax {
                 message: "Expected function name".to_string(),
                 position: name_token.position,
+                context: self.current_context().clone(),
+                suggestions: vec![
+                    Suggestion::new("Use a valid identifier for the function name", name_token.position)
+                        .with_category(SuggestionCategory::Syntax)
+                ],
+                help: Some("Function names must be valid identifiers starting with a letter or underscore".to_string()),
+                related_errors: Vec::new(),
             });
         };
         
@@ -277,6 +571,14 @@ impl<'a> Parser<'a> {
                             return Err(ParseError::InvalidSyntax {
                                 message: "Expected generic parameter name".to_string(),
                                 position: token.position,
+                                context: ParseContext::GenericParameters,
+                                suggestions: vec![
+                                    Suggestion::new("Use a valid type parameter name", token.position)
+                                        .with_category(SuggestionCategory::Syntax)
+                                        .with_replacement("T")
+                                ],
+                                help: Some("Generic parameters should be valid identifiers, typically single capital letters like T, U, V".to_string()),
+                                related_errors: Vec::new(),
                             });
                         }
                     }
@@ -368,6 +670,13 @@ impl<'a> Parser<'a> {
             return Err(ParseError::InvalidSyntax {
                 message: "Expected struct name".to_string(),
                 position: name_token.position,
+                context: self.current_context().clone(),
+                suggestions: vec![
+                    Suggestion::new("Use a valid identifier for the struct name", name_token.position)
+                        .with_category(SuggestionCategory::Syntax)
+                ],
+                help: Some("Struct names must be valid identifiers starting with a letter or underscore".to_string()),
+                related_errors: Vec::new(),
             });
         };
         
@@ -396,6 +705,14 @@ impl<'a> Parser<'a> {
                             return Err(ParseError::InvalidSyntax {
                                 message: "Expected generic parameter name".to_string(),
                                 position: token.position,
+                                context: ParseContext::GenericParameters,
+                                suggestions: vec![
+                                    Suggestion::new("Use a valid type parameter name", token.position)
+                                        .with_category(SuggestionCategory::Syntax)
+                                        .with_replacement("T")
+                                ],
+                                help: Some("Generic parameters should be valid identifiers, typically single capital letters like T, U, V".to_string()),
+                                related_errors: Vec::new(),
                             });
                         }
                     }
@@ -435,6 +752,13 @@ impl<'a> Parser<'a> {
                     return Err(ParseError::InvalidSyntax {
                         message: "Expected field name".to_string(),
                         position: field_name_token.position,
+                        context: self.current_context().clone(),
+                        suggestions: vec![
+                            Suggestion::new("Use a valid identifier for the field name", field_name_token.position)
+                                .with_category(SuggestionCategory::Syntax)
+                        ],
+                        help: Some("Field names must be valid identifiers starting with a letter or underscore".to_string()),
+                        related_errors: Vec::new(),
                     });
                 };
                 
@@ -498,6 +822,13 @@ impl<'a> Parser<'a> {
             return Err(ParseError::InvalidSyntax {
                 message: "Expected enum name".to_string(),
                 position: name_token.position,
+                context: self.current_context().clone(),
+                suggestions: vec![
+                    Suggestion::new("Use a valid identifier for the enum name", name_token.position)
+                        .with_category(SuggestionCategory::Syntax)
+                ],
+                help: Some("Enum names must be valid identifiers starting with a letter or underscore".to_string()),
+                related_errors: Vec::new(),
             });
         };
         
@@ -526,6 +857,14 @@ impl<'a> Parser<'a> {
                             return Err(ParseError::InvalidSyntax {
                                 message: "Expected generic parameter name".to_string(),
                                 position: token.position,
+                                context: ParseContext::GenericParameters,
+                                suggestions: vec![
+                                    Suggestion::new("Use a valid type parameter name", token.position)
+                                        .with_category(SuggestionCategory::Syntax)
+                                        .with_replacement("T")
+                                ],
+                                help: Some("Generic parameters should be valid identifiers, typically single capital letters like T, U, V".to_string()),
+                                related_errors: Vec::new(),
                             });
                         }
                     }
@@ -557,6 +896,13 @@ impl<'a> Parser<'a> {
                 return Err(ParseError::InvalidSyntax {
                     message: "Expected variant name".to_string(),
                     position: variant_name_token.position,
+                    context: self.current_context().clone(),
+                    suggestions: vec![
+                        Suggestion::new("Use a valid identifier for the variant name", variant_name_token.position)
+                            .with_category(SuggestionCategory::Syntax)
+                    ],
+                    help: Some("Variant names must be valid identifiers starting with a letter or underscore".to_string()),
+                    related_errors: Vec::new(),
                 });
             };
             
@@ -575,6 +921,13 @@ impl<'a> Parser<'a> {
                         return Err(ParseError::InvalidSyntax {
                             message: "Expected field name".to_string(),
                             position: field_name_token.position,
+                            context: self.current_context().clone(),
+                            suggestions: vec![
+                                Suggestion::new("Use a valid identifier for the field name", field_name_token.position)
+                                    .with_category(SuggestionCategory::Syntax)
+                            ],
+                            help: Some("Field names must be valid identifiers starting with a letter or underscore".to_string()),
+                            related_errors: Vec::new(),
                         });
                     };
                     
@@ -656,6 +1009,13 @@ impl<'a> Parser<'a> {
             return Err(ParseError::InvalidSyntax {
                 message: "Expected type name".to_string(),
                 position: name_token.position,
+                context: self.current_context().clone(),
+                suggestions: vec![
+                    Suggestion::new("Use a valid identifier for the type name", name_token.position)
+                        .with_category(SuggestionCategory::Syntax)
+                ],
+                help: Some("Type names must be valid identifiers starting with a letter or underscore".to_string()),
+                related_errors: Vec::new(),
             });
         };
         
@@ -687,6 +1047,13 @@ impl<'a> Parser<'a> {
             return Err(ParseError::InvalidSyntax {
                 message: "Expected const name".to_string(),
                 position: name_token.position,
+                context: self.current_context().clone(),
+                suggestions: vec![
+                    Suggestion::new("Use a valid identifier for the const name", name_token.position)
+                        .with_category(SuggestionCategory::Syntax)
+                ],
+                help: Some("Const names must be valid identifiers starting with a letter or underscore".to_string()),
+                related_errors: Vec::new(),
             });
         };
         
@@ -717,6 +1084,13 @@ impl<'a> Parser<'a> {
             return Err(ParseError::InvalidSyntax {
                 message: "Expected module name".to_string(),
                 position: name_token.position,
+                context: self.current_context().clone(),
+                suggestions: vec![
+                    Suggestion::new("Use a valid identifier for the module name", name_token.position)
+                        .with_category(SuggestionCategory::Syntax)
+                ],
+                help: Some("Module names must be valid identifiers starting with a letter or underscore".to_string()),
+                related_errors: Vec::new(),
             });
         };
         
@@ -962,35 +1336,70 @@ impl<'a> Parser<'a> {
                                 Ok((pattern, Some(self_type)))
                             } else {
                                 Err(ParseError::UnexpectedToken {
-                                    expected: vec!["self".to_string()],
+                                    expected: vec![ExpectedToken::new("self", "self parameter")],
                                     found: token.token_type.clone(),
                                     position: token.position,
+                                    context: self.current_context().clone(),
+                                    suggestions: vec![
+                                        Suggestion::new("Use 'self' for the parameter name", token.position)
+                                            .with_replacement("self")
+                                            .with_category(SuggestionCategory::Syntax)
+                                    ],
+                                    help: Some("Method parameters can use 'self', '&self', or '&mut self'".to_string()),
                                 })
                             }
                         } else {
                             Err(ParseError::UnexpectedToken {
-                                expected: vec!["self".to_string()],
+                                expected: vec![ExpectedToken::new("self", "self parameter")],
                                 found: token.token_type.clone(),
                                 position: token.position,
+                                context: self.current_context().clone(),
+                                suggestions: vec![
+                                    Suggestion::new("Use 'self' for the parameter name", token.position)
+                                        .with_replacement("self")
+                                        .with_category(SuggestionCategory::Syntax)
+                                ],
+                                help: Some("Method parameters can use 'self', '&self', or '&mut self'".to_string()),
                             })
                         }
                     } else {
                         Err(ParseError::UnexpectedEof {
-                            expected: vec!["self".to_string()],
+                            expected: vec![ExpectedToken::new("self", "self parameter")],
                             position: self.current_position(),
+                            context: self.current_context().clone(),
+                            unclosed_delimiters: Vec::new(),
+                            suggestions: vec![
+                                Suggestion::new("Add 'self' parameter", self.current_position())
+                                    .with_replacement("self")
+                                    .with_category(SuggestionCategory::Syntax)
+                            ],
                         })
                     }
                 }
                 _ => Err(ParseError::UnexpectedToken {
-                    expected: vec!["self parameter".to_string()],
+                    expected: vec![ExpectedToken::new("self parameter", "self, &self, or &mut self")],
                     found: token.token_type.clone(),
                     position: token.position,
+                    context: self.current_context().clone(),
+                    suggestions: vec![
+                        Suggestion::new("Use a valid self parameter", token.position)
+                            .with_replacement("self")
+                            .with_category(SuggestionCategory::Syntax)
+                    ],
+                    help: Some("Self parameters can be 'self' (owned), '&self' (borrowed), or '&mut self' (mutable borrow)".to_string()),
                 }),
             }
         } else {
             Err(ParseError::UnexpectedEof {
-                expected: vec!["self parameter".to_string()],
+                expected: vec![ExpectedToken::new("self parameter", "self, &self, or &mut self")],
                 position: self.current_position(),
+                context: self.current_context().clone(),
+                unclosed_delimiters: Vec::new(),
+                suggestions: vec![
+                    Suggestion::new("Add self parameter", self.current_position())
+                        .with_replacement("self")
+                        .with_category(SuggestionCategory::Syntax)
+                ],
             })
         }
     }

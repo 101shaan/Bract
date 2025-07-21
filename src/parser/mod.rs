@@ -49,12 +49,8 @@ pub fn parse_statement(source: &str, file_id: usize) -> ParseResult<Stmt> {
 pub fn parse_type_with_memory(source: &str, file_id: usize) -> ParseResult<Type> {
     let mut parser = Parser::new(source, file_id)?;
     
-    // Try to parse strategy wrapper first
-    if let Some(wrapper_type) = parser.parse_strategy_wrapper_type()? {
-        Ok(wrapper_type)
-    } else {
-        parser.parse_type()
-    }
+    // Parse type (includes strategy wrappers)
+    parser.parse_type()
 }
 
 /// Parse a memory annotation
@@ -84,7 +80,7 @@ mod integration_tests {
         let source = r#"@memory(strategy = "linear", size_hint = 1024)"#;
         let annotation = parse_memory_annotation(source, 0).unwrap();
         
-        assert_eq!(annotation.strategy, crate::ast::MemoryStrategy::Linear);
+        assert_eq!(annotation.strategy, Some(crate::ast::MemoryStrategy::Linear));
         assert_eq!(annotation.size_hint, Some(1024));
     }
     

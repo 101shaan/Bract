@@ -12,10 +12,10 @@
 //! - Generic types T
 //! - Inferred types _
 
-use crate::lexer::{TokenType, position::Position};
-use crate::ast::{Type, Span, PrimitiveType, MemoryStrategy, Ownership};
+use crate::lexer::{TokenType, Position};
+use crate::ast::{Type, PrimitiveType, Span, InternedString, MemoryStrategy, Ownership};
 use super::parser::Parser;
-use super::error::{ParseError, ParseResult};
+use super::error::{ParseError, ParseResult, ParseContext, ExpectedToken, Suggestion, SuggestionCategory};
 
 impl<'a> Parser<'a> {
     /// Parse a type according to EBNF grammar
@@ -77,16 +77,28 @@ impl<'a> Parser<'a> {
                 
                 _ => {
                     Err(ParseError::UnexpectedToken {
-                        expected: vec!["type".to_string()],
+                        expected: vec![ExpectedToken::new("type", "primitive, reference, pointer, tuple, array, or path type")],
                         found: token.token_type.clone(),
                         position: start_pos,
+                        context: ParseContext::TypeAnnotation,
+                        suggestions: vec![
+                            Suggestion::new("Use a valid type", start_pos)
+                                .with_category(SuggestionCategory::Type)
+                        ],
+                        help: Some("Types can be primitives (i32, bool), references (&T), pointers (*T), tuples ((T, U)), arrays ([T; N]), or paths (MyStruct)".to_string()),
                     })
                 }
             }
         } else {
             Err(ParseError::UnexpectedEof {
-                expected: vec!["type".to_string()],
+                expected: vec![ExpectedToken::new("type", "primitive, reference, pointer, tuple, array, or path type")],
                 position: self.current_position(),
+                context: ParseContext::TypeAnnotation,
+                unclosed_delimiters: Vec::new(),
+                suggestions: vec![
+                    Suggestion::new("Add a type annotation", self.current_position())
+                        .with_category(SuggestionCategory::Type)
+                ],
             })
         }
     }
@@ -157,9 +169,15 @@ impl<'a> Parser<'a> {
             false
         } else {
             return Err(ParseError::UnexpectedToken {
-                expected: vec!["const or mut".to_string()],
+                expected: vec![ExpectedToken::new("const or mut", "pointer mutability specifier")],
                 found: self.current_token.as_ref().unwrap().token_type.clone(),
                 position: self.current_position(),
+                context: ParseContext::TypeAnnotation,
+                suggestions: vec![
+                    Suggestion::new("Use 'const' for immutable pointer or 'mut' for mutable", self.current_position())
+                        .with_category(SuggestionCategory::Type)
+                ],
+                help: Some("Pointer types require explicit mutability: *const T or *mut T".to_string()),
             });
         };
         
@@ -223,9 +241,16 @@ impl<'a> Parser<'a> {
             // This would be a slice type &[T], but we need the & to be parsed first
             // So this is an error - slices must be written as &[T]
             Err(ParseError::UnexpectedToken {
-                expected: vec!["semicolon for array size".to_string()],
+                expected: vec![ExpectedToken::new("semicolon for array size", "array size separator ';'")],
                 found: self.current_token.as_ref().unwrap().token_type.clone(),
                 position: self.current_position(),
+                context: ParseContext::TypeAnnotation,
+                suggestions: vec![
+                    Suggestion::new("Use semicolon to specify array size: [T; size]", self.current_position())
+                        .with_replacement("; size")
+                        .with_category(SuggestionCategory::Type)
+                ],
+                help: Some("Arrays require explicit size: [T; N]. Use &[T] for slices".to_string()),
             })
         }
     }
@@ -279,11 +304,28 @@ impl<'a> Parser<'a> {
                 self.advance()?;
             } else {
                 return Err(ParseError::UnexpectedToken {
-                    expected: vec!["identifier".to_string()],
+                    expected: vec![ExpectedToken::new("identifier", "type name or path segment")],
                     found: token.token_type.clone(),
                     position: self.current_position(),
-                });
+                    context: ParseContext::TypeAnnotation,
+                    suggestions: vec![
+                        Suggestion::new("Use a valid identifier for the type", self.current_position())
+                            .with_category(SuggestionCategory::Type)
+                    ],
+                    help: Some("Type names must be valid identifiers, optionally with module paths".to_string()),
+                })
             }
+        } else {
+            return Err(ParseError::UnexpectedEof {
+                expected: vec![ExpectedToken::new("identifier", "type name")],
+                position: self.current_position(),
+                context: ParseContext::TypeAnnotation,
+                unclosed_delimiters: Vec::new(),
+                suggestions: vec![
+                    Suggestion::new("Add a type name", self.current_position())
+                        .with_category(SuggestionCategory::Type)
+                ],
+            })
         }
         
         // Parse additional path segments
@@ -294,16 +336,28 @@ impl<'a> Parser<'a> {
                     self.advance()?;
                 } else {
                     return Err(ParseError::UnexpectedToken {
-                        expected: vec!["identifier".to_string()],
+                        expected: vec![ExpectedToken::new("identifier", "type name or path segment")],
                         found: token.token_type.clone(),
                         position: self.current_position(),
-                    });
+                        context: ParseContext::TypeAnnotation,
+                        suggestions: vec![
+                            Suggestion::new("Use a valid identifier for the type", self.current_position())
+                                .with_category(SuggestionCategory::Type)
+                        ],
+                        help: Some("Type names must be valid identifiers, optionally with module paths".to_string()),
+                    })
                 }
             } else {
                 return Err(ParseError::UnexpectedEof {
-                    expected: vec!["identifier".to_string()],
+                    expected: vec![ExpectedToken::new("identifier", "type name")],
                     position: self.current_position(),
-                });
+                    context: ParseContext::TypeAnnotation,
+                    unclosed_delimiters: Vec::new(),
+                    suggestions: vec![
+                        Suggestion::new("Add a type name", self.current_position())
+                            .with_category(SuggestionCategory::Type)
+                    ],
+                })
             }
         }
         

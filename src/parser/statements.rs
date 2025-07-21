@@ -11,7 +11,7 @@
 use crate::lexer::{TokenType, Token};
 use crate::ast::{Stmt, Span, BinaryOp, MatchArm};
 use super::parser::Parser;
-use super::error::{ParseError, ParseResult};
+use super::error::{ParseError, ParseResult, ParseContext, ExpectedToken, Suggestion, SuggestionCategory};
 
 impl<'a> Parser<'a> {
     /// Parse a statement
@@ -87,16 +87,29 @@ impl<'a> Parser<'a> {
                         }
                     } else {
                         Err(ParseError::UnexpectedEof {
-                            expected: vec!["semicolon or assignment operator".to_string()],
+                            expected: vec![ExpectedToken::new("semicolon or assignment operator", "';' or '=', '+=', etc.")],
                             position: self.current_position(),
+                            context: ParseContext::Statement,
+                            unclosed_delimiters: Vec::new(),
+                            suggestions: vec![
+                                Suggestion::new("Add semicolon to end statement", self.current_position())
+                                    .with_replacement(";")
+                                    .with_category(SuggestionCategory::Syntax)
+                            ],
                         })
                     }
                 }
             }
         } else {
             Err(ParseError::UnexpectedEof {
-                expected: vec!["statement".to_string()],
+                expected: vec![ExpectedToken::new("statement", "let, if, while, return, or expression")],
                 position: self.current_position(),
+                context: ParseContext::Statement,
+                unclosed_delimiters: Vec::new(),
+                suggestions: vec![
+                    Suggestion::new("Add a statement", self.current_position())
+                        .with_category(SuggestionCategory::Syntax)
+                ],
             })
         }
     }
