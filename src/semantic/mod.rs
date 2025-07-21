@@ -6,10 +6,15 @@
 //! - Name resolution and dependency tracking
 //! - Semantic error reporting
 
+pub mod analyzer;
 pub mod symbols;
 pub mod types;
-pub mod analyzer;
+pub mod ownership;
+pub mod escape_analysis;
 
-pub use symbols::{SymbolTable, SymbolTableBuilder, Symbol, SymbolKind, SymbolError};
-pub use types::{TypeChecker, TypeSystem, TypeError};
-pub use analyzer::{SemanticAnalyzer, AnalysisResult}; 
+// Re-export key types for convenience
+pub use analyzer::{SemanticAnalyzer, SemanticError, SemanticWarning};
+pub use symbols::{SymbolTable, SymbolTableBuilder, Symbol, SymbolKind, Scope};
+pub use types::{TypeSystem, TypeChecker, TypeError, InferenceContext, OwnershipTracker};
+pub use ownership::{OwnershipAnalyzer, OwnershipError, BorrowInfo, VariableState};
+pub use escape_analysis::{EscapeAnalyzer, EscapeError, ValueFlow, EscapeContext}; 
