@@ -338,7 +338,9 @@ impl EscapeAnalyzer {
             
             Expr::StructInit { fields, .. } => {
                 for field in fields {
-                    self.analyze_expr(&field.value);
+                    if let Some(ref value) = field.value {
+                        self.analyze_expr(value);
+                    }
                 }
             }
             
@@ -436,7 +438,7 @@ impl EscapeAnalyzer {
                 // Add variable to current scope
                 self.add_variable_from_pattern(pattern, type_annotation, initializer.as_ref());
             }
-            Stmt::Item(item) => {
+            Stmt::Item { item, .. } => {
                 self.analyze_item(item);
             }
         }
