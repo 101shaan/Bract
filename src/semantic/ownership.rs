@@ -352,7 +352,7 @@ impl OwnershipAnalyzer {
                 }
                 
                 if let Some(trailing) = trailing_expr {
-                    self.analyze_expr(trailing.as_ref());
+                    self.analyze_expr(trailing);
                 }
             }
             
@@ -447,6 +447,9 @@ impl OwnershipAnalyzer {
             }
             Stmt::Item { item, .. } => {
                 self.analyze_item(item);
+            }
+            _ => {
+                // Other statement types - simplified for now
             }
         }
     }

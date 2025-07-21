@@ -202,7 +202,7 @@ impl EscapeAnalyzer {
     fn analyze_item(&mut self, item: &Item) {
         match item {
             Item::Function { name, body: Some(body), params, return_type, .. } => {
-                self.enter_function_scope(name.to_string());
+                self.enter_function_scope(format!("{:?}", name));
                 
                 // Analyze parameters
                 for param in params {
@@ -235,7 +235,7 @@ impl EscapeAnalyzer {
             Item::Impl { items, .. } => {
                 for impl_item in items {
                     if let crate::ast::ImplItem::Function { name, body: Some(body), params, return_type, .. } = impl_item {
-                        self.enter_function_scope(format!("impl::{}", name));
+                        self.enter_function_scope(format!("impl::{:?}", name));
                         
                         for param in params {
                             self.add_parameter(&param.pattern, &param.type_annotation);
@@ -287,8 +287,8 @@ impl EscapeAnalyzer {
             
             Expr::Unary { expr, op, .. } => {
                 match op {
-                    UnaryOp::AddressOf | UnaryOp::AddressOfMut => {
-                        // Taking address creates potential escape
+                    UnaryOp::MutableRef => {
+                        // Taking mutable address creates potential escape
                         self.check_address_escape(expr);
                     }
                     _ => {
@@ -319,8 +319,8 @@ impl EscapeAnalyzer {
                 self.analyze_expr(object);
             }
             
-            Expr::Index { base, index, .. } => {
-                self.analyze_expr(base);
+            Expr::Index { object, index, .. } => {
+                self.analyze_expr(object);
                 self.analyze_expr(index);
             }
             
@@ -336,7 +336,7 @@ impl EscapeAnalyzer {
                 }
             }
             
-            Expr::Struct { fields, .. } => {
+            Expr::StructInit { fields, .. } => {
                 for field in fields {
                     self.analyze_expr(&field.value);
                 }
@@ -358,15 +358,15 @@ impl EscapeAnalyzer {
                 self.exit_scope();
             }
             
-            Expr::If { condition, then_branch, else_branch, .. } => {
+            Expr::If { condition, then_block, else_block, .. } => {
                 self.analyze_expr(condition);
                 
                 // Analyze branches separately
                 self.enter_scope("if_then".to_string(), false, None);
-                self.analyze_expr(then_branch);
+                self.analyze_expr(then_block);
                 self.exit_scope();
                 
-                if let Some(else_expr) = else_branch {
+                if let Some(else_expr) = else_block {
                     self.enter_scope("if_else".to_string(), false, None);
                     self.analyze_expr(else_expr);
                     self.exit_scope();
@@ -394,8 +394,8 @@ impl EscapeAnalyzer {
                 self.exit_scope();
             }
             
-            Expr::For { pattern, iterable, body, .. } => {
-                self.analyze_expr(iterable);
+            Expr::For { pattern, iterator, body, .. } => {
+                self.analyze_expr(iterator);
                 
                 self.enter_scope("for".to_string(), false, None);
                 self.analyze_pattern(pattern);

@@ -682,7 +682,7 @@ mod tests {
     fn test_error_display() {
         let error = ParseError::UnexpectedToken {
             expected: vec![ExpectedToken::new("identifier", "variable name")],
-            found: TokenType::Integer { value: "42".to_string(), base: crate::lexer::NumberBase::Decimal, suffix: None },
+            found: TokenType::Integer { value: "42".to_string(), base: crate::lexer::token::NumberBase::Decimal, suffix: None },
             position: Position::start(0),
             context: ParseContext::FunctionDeclaration,
             suggestions: vec![Suggestion::new("Use a valid identifier", Position::start(0))],
