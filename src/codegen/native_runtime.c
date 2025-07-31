@@ -1,14 +1,12 @@
-// Ultra-minimal native runtime for Bract - no external dependencies
-// Just enough to get linking working
+// Ultra-minimal native runtime for Bract - ZERO external dependencies
+// Completely self-contained - no libc, no system calls
 
-#include <stdint.h>
-
-// basic heap - super simple bump allocator for now
+// basic heap - super simple bump allocator
 static char heap[1024 * 1024]; // 1MB heap
-static size_t heap_pos = 0;
+static unsigned long heap_pos = 0;
 
 // minimal malloc - just bump allocator
-void* bract_malloc(size_t size) {
+void* bract_malloc(unsigned long size) {
     if (heap_pos + size >= sizeof(heap)) {
         return 0; // out of memory
     }
@@ -17,13 +15,13 @@ void* bract_malloc(size_t size) {
     return ptr;
 }
 
-// minimal free - do nothing for now (bump allocator)
+// minimal free - do nothing (bump allocator)
 void bract_free(void* ptr) {
     // no-op for bump allocator
     (void)ptr;
 }
 
-// minimal reference counting - just counters for now
+// minimal reference counting - just counters
 void bract_arc_inc(int* refcount) {
     if (refcount) {
         (*refcount)++;

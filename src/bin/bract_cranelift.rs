@@ -273,10 +273,14 @@ fn link_executable(object_path: &PathBuf, output_path: &PathBuf, verbose: bool) 
             cmd.arg("/ENTRY:main")
                .arg("/SUBSYSTEM:CONSOLE")
                .arg(format!("/OUT:{}", output_path.display()))
+               .arg("/OPT:REF")          // Remove unreferenced functions (speed)
+               .arg("/OPT:ICF")          // Identical COMDAT folding (speed) 
+               .arg("/DEBUG:NONE")       // No debug info (major speed boost)
+               .arg("/INCREMENTAL:NO")   // Disable incremental linking (speed)
+               .arg("/MACHINE:X64")      // Explicit target architecture
+               .arg("/NODEFAULTLIB")     // No default libraries (major speed boost!)
                .arg(object_path)
-               .arg("native_runtime.o")  // Add our runtime
-               .arg("msvcrt.lib")        // Windows C runtime
-               .arg("kernel32.lib");     // Windows system calls
+               .arg("native_runtime.o"); // ONLY our runtime - zero external deps
             cmd
         } else {
             // Use Microsoft linker on Windows
@@ -284,10 +288,14 @@ fn link_executable(object_path: &PathBuf, output_path: &PathBuf, verbose: bool) 
             cmd.arg("/ENTRY:main")
                .arg("/SUBSYSTEM:CONSOLE")
                .arg(format!("/OUT:{}", output_path.display()))
+               .arg("/OPT:REF")          // Remove unreferenced functions (speed)
+               .arg("/OPT:ICF")          // Identical COMDAT folding (speed)
+               .arg("/DEBUG:NONE")       // No debug info (major speed boost) 
+               .arg("/INCREMENTAL:NO")   // Disable incremental linking (speed)
+               .arg("/MACHINE:X64")      // Explicit target architecture
+               .arg("/NODEFAULTLIB")     // No default libraries (major speed boost!)
                .arg(object_path)
-               .arg("native_runtime.o")  // Add our runtime
-               .arg("msvcrt.lib")        // Windows C runtime
-               .arg("kernel32.lib");     // Windows system calls
+               .arg("native_runtime.o"); // ONLY our runtime - zero external deps
             cmd
         }
     } else {
@@ -295,9 +303,12 @@ fn link_executable(object_path: &PathBuf, output_path: &PathBuf, verbose: bool) 
         let mut cmd = Command::new("ld");
         cmd.arg("-o")
            .arg(output_path)
+           .arg("--gc-sections")        // Remove unused sections (speed)
+           .arg("--strip-all")          // Strip all symbols (speed)
+           .arg("--build-id=none")      // No build ID (speed)
+           .arg("--nostdlib")           // No standard library (major speed boost!)
            .arg(object_path)
-           .arg("native_runtime.o")  // Add our runtime
-           .arg("-lc");              // Link with C library
+           .arg("native_runtime.o");    // ONLY our runtime - zero external deps
         cmd
     };
     
