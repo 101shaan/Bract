@@ -1,0 +1,35 @@
+// Mixed features test - comprehensive stress test
+@performance(max_cycles = 200000000)
+@memory(strategy = "smartptr")
+fn factorial_iterative(n: i32) -> i32 {
+    let mut result: i32 = 1;
+    let mut i: i32 = 1;
+    
+    while i <= n {
+        result = result * i;
+        i = i + 1;
+    }
+    
+    result
+}
+
+@memory(strategy = "linear")
+fn array_processing() -> i32 {
+    // Simulate array processing with pointer arithmetic
+    let mut sum: i32 = 0;
+    let i: i32 = 0;
+    
+    while i < 100 {
+        sum = sum + (i * i);
+        i = i + 1;
+    }
+    
+    sum
+}
+
+fn main() -> i32 {
+    let fact_result: i32 = factorial_iterative(12);
+    let array_result: i32 = array_processing();
+    
+    fact_result + array_result
+}

@@ -14,6 +14,8 @@ pub struct CraneliftContext {
     variables: HashMap<String, Value>,
     /// Function ID mapping (function name -> Cranelift function ID)
     functions: HashMap<String, FuncId>,
+    /// Function signatures (function name -> signature)
+    function_signatures: HashMap<String, cranelift_codegen::ir::Signature>,
     /// Function scope stack
     function_scopes: Vec<String>,
     /// Type mapping cache
@@ -28,6 +30,7 @@ impl CraneliftContext {
         let mut context = Self {
             variables: HashMap::new(),
             functions: HashMap::new(),
+            function_signatures: HashMap::new(),
             function_scopes: Vec::new(),
             type_cache: HashMap::new(),
             has_return: false,
@@ -75,9 +78,19 @@ impl CraneliftContext {
         self.variables.get(name).copied()
     }
     
-    /// Register a function
+    /// Register a function with its signature
     pub fn register_function(&mut self, name: &str, func_id: FuncId) {
         self.functions.insert(name.to_string(), func_id);
+    }
+    
+    /// Register a function signature
+    pub fn register_function_signature(&mut self, name: &str, signature: cranelift_codegen::ir::Signature) {
+        self.function_signatures.insert(name.to_string(), signature);
+    }
+    
+    /// Get a function signature
+    pub fn get_function_signature(&self, name: &str) -> Option<&cranelift_codegen::ir::Signature> {
+        self.function_signatures.get(name)
     }
     
     /// Get a function ID

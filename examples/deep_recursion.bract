@@ -1,0 +1,15 @@
+// Deep recursion test - stress test stack management
+@performance(max_cycles = 100000000)
+@memory(strategy = "stack")
+fn deep_recursive_sum(n: i32, acc: i32) -> i32 {
+    if n <= 0 {
+        acc
+    } else {
+        deep_recursive_sum(n - 1, acc + n)
+    }
+}
+
+fn main() -> i32 {
+    // Sum numbers from 1 to 100 recursively
+    deep_recursive_sum(100, 0)
+}

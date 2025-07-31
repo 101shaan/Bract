@@ -1,0 +1,29 @@
+// Complex nested loops - stress test for control flow and optimization
+@performance(max_cycles = 75000000)
+@memory(strategy = "region")
+fn complex_computation() -> i32 {
+    let mut result: i32 = 0;
+    
+    // Triple nested loops with complex arithmetic
+    let outer: i32 = 0;
+    while outer < 50 {
+        let middle: i32 = 0;
+        while middle < 30 {
+            let inner: i32 = 0;
+            while inner < 20 {
+                // Complex computation mixing arithmetic operations
+                let temp: i32 = (outer * middle) + (inner * 3);
+                result = result + (temp % 17) + (outer / (middle + 1));
+                inner = inner + 1;
+            }
+            middle = middle + 1;
+        }
+        outer = outer + 1;
+    }
+    
+    result
+}
+
+fn main() -> i32 {
+    complex_computation()
+}
