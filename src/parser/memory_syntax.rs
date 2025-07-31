@@ -10,7 +10,7 @@
 use crate::ast::{Type, Expr, Span, InternedString, MemoryStrategy, TypeBound};
 use crate::lexer::{TokenType};
 use super::parser::Parser;
-use super::error::{ParseError, ParseResult, ParseContext, ExpectedToken, Suggestion, SuggestionCategory};
+use super::error::{ParseError, ParseResult, ParseContext};
 
 /// Memory strategy annotation syntax parser
 #[derive(Debug, Clone, PartialEq)]

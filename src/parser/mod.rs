@@ -25,7 +25,7 @@ pub use memory_syntax::{
     MemoryAnnotation, PerformanceAnnotation, RegionBlock, VariableDeclaration
 };
 
-use crate::ast::{Module, Expr, Stmt, Item, Type, Pattern};
+use crate::ast::{Module, Expr, Stmt, Type};
 
 /// Parse a complete Bract source file into an AST module
 pub fn parse_module(source: &str, file_id: usize) -> ParseResult<Module> {

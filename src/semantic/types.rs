@@ -8,11 +8,11 @@
 //! - Integration with hybrid memory management
 
 use crate::ast::{
-    Type, Expr, Stmt, Item, Module, Literal, PrimitiveType, Span, InternedString,
-    MemoryStrategy, Ownership, LifetimeId, TypeBound, TypeConstraint, BinaryOp, UnaryOp
+    Type, Expr, Item, Module, Literal, PrimitiveType, Span, InternedString,
+    MemoryStrategy, Ownership, LifetimeId, TypeConstraint, BinaryOp, UnaryOp
 };
 use crate::semantic::symbols::{SymbolTable, SymbolKind};
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::HashMap;
 use std::fmt;
 
 /// Result type for type operations

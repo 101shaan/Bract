@@ -11,11 +11,11 @@
 //! - Integration with performance contracts
 
 use crate::ast::{
-    Type, Expr, Stmt, Item, Module, Pattern, Span, InternedString,
-    MemoryStrategy, Ownership, LifetimeId, BinaryOp, UnaryOp
+    Type, Expr, Stmt, Item, Module, Pattern, InternedString,
+    MemoryStrategy, LifetimeId, BinaryOp, UnaryOp
 };
 use crate::lexer::Position;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, HashSet};
 
 /// Ownership analysis errors
 #[derive(Debug, Clone, PartialEq)]
@@ -393,9 +393,9 @@ impl OwnershipAnalyzer {
                 }
                 
                 // Merge all arm states
-                if let Some(first_state) = arm_states.into_iter().next() {
-                    let mut merged_state = first_state;
-                    for state in arm_states {
+                if !arm_states.is_empty() {
+                    let mut merged_state = arm_states[0].clone();
+                    for state in arm_states.into_iter().skip(1) {
                         merged_state = self.merge_two_states(merged_state, state);
                     }
                     self.restore_state(merged_state);
@@ -429,6 +429,61 @@ impl OwnershipAnalyzer {
             
             Expr::Continue { .. } => {
                 // No ownership effects
+            }
+            
+            // Additional expression types
+            Expr::Cast { expr, .. } => {
+                self.analyze_expr(expr);
+            }
+            
+            Expr::Parenthesized { expr, .. } => {
+                self.analyze_expr(expr);
+            }
+            
+            Expr::Range { start, end, .. } => {
+                if let Some(start_expr) = start {
+                    self.analyze_expr(start_expr);
+                }
+                if let Some(end_expr) = end {
+                    self.analyze_expr(end_expr);
+                }
+            }
+            
+            Expr::Closure { params, body, .. } => {
+                self.enter_function_scope();
+                for param in params {
+                    self.add_parameter(&param.pattern, &param.type_annotation);
+                }
+                self.analyze_expr(body);
+                self.exit_function_scope();
+            }
+            
+            Expr::Loop { body, .. } => {
+                self.analyze_expr(body);
+            }
+            
+            Expr::Box { expr, .. } => {
+                self.analyze_expr(expr);
+            }
+            
+            Expr::Reference { expr, .. } => {
+                self.analyze_expr(expr);
+            }
+            
+            Expr::Dereference { expr, .. } => {
+                self.analyze_expr(expr);
+            }
+            
+            Expr::Try { expr, .. } => {
+                self.analyze_expr(expr);
+            }
+            
+            Expr::Await { expr, .. } => {
+                self.analyze_expr(expr);
+            }
+            
+            Expr::Macro { .. } => {
+                // Macro invocations need special handling - simplified for now
             }
         }
     }
@@ -476,8 +531,10 @@ impl OwnershipAnalyzer {
                 }
             }
             Pattern::Enum { patterns, .. } => {
-                for p in patterns {
-                    self.analyze_pattern(p);
+                if let Some(patterns) = patterns {
+                    for p in patterns {
+                        self.analyze_pattern(p);
+                    }
                 }
             }
             Pattern::Array { patterns, .. } => {
@@ -694,7 +751,7 @@ impl OwnershipAnalyzer {
             Expr::Index { span, .. } |
             Expr::Array { span, .. } |
             Expr::Tuple { span, .. } |
-            Expr::Struct { span, .. } |
+            Expr::StructInit { span, .. } |
             Expr::Block { span, .. } |
             Expr::If { span, .. } |
             Expr::Match { span, .. } |
@@ -702,7 +759,18 @@ impl OwnershipAnalyzer {
             Expr::For { span, .. } |
             Expr::Return { span, .. } |
             Expr::Break { span, .. } |
-            Expr::Continue { span, .. } => span.start,
+            Expr::Continue { span, .. } |
+            Expr::Cast { span, .. } |
+            Expr::Parenthesized { span, .. } |
+            Expr::Range { span, .. } |
+            Expr::Closure { span, .. } |
+            Expr::Loop { span, .. } |
+            Expr::Box { span, .. } |
+            Expr::Reference { span, .. } |
+            Expr::Dereference { span, .. } |
+            Expr::Try { span, .. } |
+            Expr::Await { span, .. } |
+            Expr::Macro { span, .. } => span.start,
         }
     }
     

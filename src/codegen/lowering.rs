@@ -11,18 +11,18 @@
 //! 4. Cranelift Optimization: Register allocation, instruction selection
 
 use crate::ast::{
-    Module, Item, Expr, Stmt, Type, Literal, BinaryOp, UnaryOp, 
+    Module, Item, Expr, Type, Literal, BinaryOp, UnaryOp, 
     InternedString, Span, MemoryStrategy, Ownership, LifetimeId, PrimitiveType
 };
 use crate::codegen::bract_ir::{
     BIRModule, BIRFunction, BIRBasicBlock, BIRInstruction, BIROp, BIRValue, BIRType,
     BIRValueId, BIRBlockId, BIRFunctionId, CallingConvention, MemoryOrder,
-    PerformanceContract, MemoryRegion
+    PerformanceContract
 };
 use crate::semantic::types::{TypeChecker, TypeError};
-use cranelift_codegen::ir::{Function as ClifFunction, InstBuilder, Type as ClifType};
+use cranelift_codegen::ir::{Function as ClifFunction, InstBuilder};
 use cranelift_codegen::Context as ClifContext;
-use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
+use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext};
 use std::collections::HashMap;
 
 /// Result type for lowering operations

@@ -10,11 +10,11 @@
 //! - Performance contracts are maintained across escapes
 
 use crate::ast::{
-    Type, Expr, Stmt, Item, Module, Pattern, Span, InternedString,
-    MemoryStrategy, Ownership, LifetimeId, BinaryOp, UnaryOp
+    Type, Expr, Stmt, Item, Module, Pattern, InternedString,
+    MemoryStrategy, LifetimeId, BinaryOp, UnaryOp
 };
 use crate::lexer::Position;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, HashSet};
 
 /// Escape analysis errors
 #[derive(Debug, Clone, PartialEq)]
@@ -421,6 +421,65 @@ impl EscapeAnalyzer {
             Expr::Continue { .. } => {
                 // No escape effects
             }
+            
+            // Additional expression types
+            Expr::Cast { expr, .. } => {
+                self.analyze_expr(expr);
+            }
+            
+            Expr::Parenthesized { expr, .. } => {
+                self.analyze_expr(expr);
+            }
+            
+            Expr::Range { start, end, .. } => {
+                if let Some(start_expr) = start {
+                    self.analyze_expr(start_expr);
+                }
+                if let Some(end_expr) = end {
+                    self.analyze_expr(end_expr);
+                }
+            }
+            
+            Expr::Closure { params, body, .. } => {
+                self.enter_scope("closure".to_string(), false, None);
+                for param in params {
+                    self.add_parameter(&param.pattern, &param.type_annotation);
+                }
+                self.analyze_expr(body);
+                self.exit_scope();
+            }
+            
+            Expr::Loop { body, .. } => {
+                self.enter_scope("loop".to_string(), false, None);
+                self.analyze_expr(body);
+                self.exit_scope();
+            }
+            
+            Expr::Box { expr, .. } => {
+                self.analyze_expr(expr);
+                // Box allocations could escape - TODO: implement proper escape analysis
+            }
+            
+            Expr::Reference { expr, .. } => {
+                self.analyze_expr(expr);
+                self.check_address_escape(expr);
+            }
+            
+            Expr::Dereference { expr, .. } => {
+                self.analyze_expr(expr);
+            }
+            
+            Expr::Try { expr, .. } => {
+                self.analyze_expr(expr);
+            }
+            
+            Expr::Await { expr, .. } => {
+                self.analyze_expr(expr);
+            }
+            
+            Expr::Macro { .. } => {
+                // Macro invocations need special handling - simplified for now
+            }
         }
     }
     
@@ -440,6 +499,89 @@ impl EscapeAnalyzer {
             }
             Stmt::Item { item, .. } => {
                 self.analyze_item(item);
+            }
+            
+            // Additional statement types
+            Stmt::Assignment { target, value, .. } => {
+                self.analyze_expr(target);
+                self.analyze_expr(value);
+                self.handle_assignment_escape(target, value);
+            }
+            
+            Stmt::CompoundAssignment { target, value, .. } => {
+                self.analyze_expr(target);
+                self.analyze_expr(value);
+            }
+            
+            Stmt::If { condition, then_block, else_block, .. } => {
+                self.analyze_expr(condition);
+                for stmt in then_block {
+                    self.analyze_stmt(stmt);
+                }
+                if let Some(else_stmt) = else_block {
+                    self.analyze_stmt(else_stmt);
+                }
+            }
+            
+            Stmt::While { condition, body, .. } => {
+                self.analyze_expr(condition);
+                for stmt in body {
+                    self.analyze_stmt(stmt);
+                }
+            }
+            
+            Stmt::For { pattern, iterable, body, .. } => {
+                self.analyze_expr(iterable);
+                self.analyze_pattern(pattern);
+                for stmt in body {
+                    self.analyze_stmt(stmt);
+                }
+            }
+            
+            Stmt::Loop { body, .. } => {
+                for stmt in body {
+                    self.analyze_stmt(stmt);
+                }
+            }
+            
+            Stmt::Match { expr, arms, .. } => {
+                self.analyze_expr(expr);
+                for arm in arms {
+                    self.analyze_pattern(&arm.pattern);
+                    if let Some(guard) = &arm.guard {
+                        self.analyze_expr(guard);
+                    }
+                    self.analyze_expr(&arm.body);
+                }
+            }
+            
+            Stmt::Break { expr, .. } => {
+                if let Some(expr) = expr {
+                    self.analyze_expr(expr);
+                }
+            }
+            
+            Stmt::Continue { .. } => {
+                // No escape effects
+            }
+            
+            Stmt::Return { expr, .. } => {
+                if let Some(expr) = expr {
+                    self.analyze_expr(expr);
+                    self.check_return_value_escape(expr);
+                }
+            }
+            
+            Stmt::Block { statements, .. } => {
+                self.enter_scope("stmt_block".to_string(), false, None);
+                for stmt in statements {
+                    self.analyze_stmt(stmt);
+                }
+                self.exit_scope();
+            }
+            
+            Stmt::Empty { .. } => {
+                // No operations
             }
         }
     }
@@ -469,12 +611,16 @@ impl EscapeAnalyzer {
             }
             Pattern::Struct { fields, .. } => {
                 for field in fields {
-                    self.analyze_pattern(&field.pattern);
+                    if let Some(ref pattern) = field.pattern {
+                        self.analyze_pattern(pattern);
+                    }
                 }
             }
             Pattern::Enum { patterns, .. } => {
-                for p in patterns {
-                    self.analyze_pattern(p);
+                if let Some(patterns) = patterns {
+                    for p in patterns {
+                        self.analyze_pattern(p);
+                    }
                 }
             }
             Pattern::Array { patterns, .. } => {
@@ -715,8 +861,8 @@ impl EscapeAnalyzer {
     fn get_memory_strategy(&self, ty: &Type) -> MemoryStrategy {
         match ty {
             Type::Pointer { memory_strategy, .. } |
-            Type::Reference { memory_strategy, .. } |
             Type::Array { memory_strategy, .. } => *memory_strategy,
+            Type::Reference { .. } => MemoryStrategy::Stack, // references use stack semantics
             _ => MemoryStrategy::Inferred,
         }
     }
@@ -743,7 +889,7 @@ impl EscapeAnalyzer {
             Expr::Index { span, .. } |
             Expr::Array { span, .. } |
             Expr::Tuple { span, .. } |
-            Expr::Struct { span, .. } |
+            Expr::StructInit { span, .. } |
             Expr::Block { span, .. } |
             Expr::If { span, .. } |
             Expr::Match { span, .. } |
@@ -751,7 +897,18 @@ impl EscapeAnalyzer {
             Expr::For { span, .. } |
             Expr::Return { span, .. } |
             Expr::Break { span, .. } |
-            Expr::Continue { span, .. } => span.start,
+            Expr::Continue { span, .. } |
+            Expr::Cast { span, .. } |
+            Expr::Parenthesized { span, .. } |
+            Expr::Range { span, .. } |
+            Expr::Closure { span, .. } |
+            Expr::Loop { span, .. } |
+            Expr::Box { span, .. } |
+            Expr::Reference { span, .. } |
+            Expr::Dereference { span, .. } |
+            Expr::Try { span, .. } |
+            Expr::Await { span, .. } |
+            Expr::Macro { span, .. } => span.start,
         }
     }
     
