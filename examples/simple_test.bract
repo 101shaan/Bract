@@ -1,0 +1,4 @@
+// Minimal test program without complex memory management
+fn main() -> i32 {
+    42
+}

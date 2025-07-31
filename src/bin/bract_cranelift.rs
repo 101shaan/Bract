@@ -255,7 +255,10 @@ fn link_executable(object_path: &PathBuf, output_path: &PathBuf, verbose: bool) 
             cmd.arg("/ENTRY:main")
                .arg("/SUBSYSTEM:CONSOLE")
                .arg(format!("/OUT:{}", output_path.display()))
-               .arg(object_path);
+               .arg(object_path)
+               .arg("native_runtime.o")  // Add our runtime
+               .arg("msvcrt.lib")        // Windows C runtime
+               .arg("kernel32.lib");     // Windows system calls
             cmd
         } else {
             // Use Microsoft linker on Windows
@@ -263,7 +266,10 @@ fn link_executable(object_path: &PathBuf, output_path: &PathBuf, verbose: bool) 
             cmd.arg("/ENTRY:main")
                .arg("/SUBSYSTEM:CONSOLE")
                .arg(format!("/OUT:{}", output_path.display()))
-               .arg(object_path);
+               .arg(object_path)
+               .arg("native_runtime.o")  // Add our runtime
+               .arg("msvcrt.lib")        // Windows C runtime
+               .arg("kernel32.lib");     // Windows system calls
             cmd
         }
     } else {
@@ -271,7 +277,9 @@ fn link_executable(object_path: &PathBuf, output_path: &PathBuf, verbose: bool) 
         let mut cmd = Command::new("ld");
         cmd.arg("-o")
            .arg(output_path)
-           .arg(object_path);
+           .arg(object_path)
+           .arg("native_runtime.o")  // Add our runtime
+           .arg("-lc");              // Link with C library
         cmd
     };
     
