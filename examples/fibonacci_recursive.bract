@@ -1,0 +1,14 @@
+// Recursive Fibonacci - stress test for deep call stacks
+@performance(max_cycles = 10000000)
+@memory(strategy = "stack")
+fn fibonacci(n: i32) -> i32 {
+    if n <= 1 {
+        n
+    } else {
+        fibonacci(n - 1) + fibonacci(n - 2)
+    }
+}
+
+fn main() -> i32 {
+    fibonacci(10)
+}
