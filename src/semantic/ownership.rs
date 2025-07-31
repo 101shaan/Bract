@@ -153,8 +153,10 @@ pub struct OwnershipAnalyzer {
     /// Active borrows
     active_borrows: Vec<BorrowInfo>,
     /// Memory regions
+    #[allow(dead_code)]
     regions: HashMap<InternedString, RegionInfo>,
     /// Current region stack
+    #[allow(dead_code)]
     region_stack: Vec<InternedString>,
     /// Lifetime counter
     next_lifetime_id: u32,
@@ -575,7 +577,7 @@ impl OwnershipAnalyzer {
     }
     
     /// Handle assignment operations
-    fn handle_assignment(&mut self, lhs: &Expr, rhs: &Expr) {
+    fn handle_assignment(&mut self, _lhs: &Expr, rhs: &Expr) {
         // Move the right-hand side into the left-hand side
         if let Some(name) = self.get_simple_identifier(rhs) {
             self.move_variable(name, MoveReason::Assignment);
@@ -808,7 +810,7 @@ impl OwnershipAnalyzer {
     }
     
     /// Merge two analysis states
-    fn merge_two_states(&self, state1: AnalysisState, state2: AnalysisState) -> AnalysisState {
+    fn merge_two_states(&self, state1: AnalysisState, _state2: AnalysisState) -> AnalysisState {
         // Simplified merge - would need more sophisticated logic
         state1
     }
@@ -822,7 +824,7 @@ impl OwnershipAnalyzer {
     /// Finalize analysis
     fn finalize_analysis(&mut self) {
         // Check for unclosed borrows, unused linear types, etc.
-        for (name, state) in &self.variable_states {
+        for (_name, state) in &self.variable_states {
             if let VariableState::Linear { used: false, .. } = state {
                 // Linear type was never used - could be a warning
             }

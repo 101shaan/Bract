@@ -252,7 +252,7 @@ impl<'a> Parser<'a> {
     
     /// Parse memory strategy bound for generics
     pub fn parse_memory_strategy_bound(&mut self) -> ParseResult<TypeBound> {
-        let start_pos = self.current_position();
+        let _start_pos = self.current_position();
         
         if !self.match_identifier("memory") {
             return Err(ParseError::invalid_syntax(
@@ -468,6 +468,7 @@ impl<'a> Parser<'a> {
     }
     
     /// Parse boolean literal
+    #[allow(dead_code)]
     fn parse_boolean_literal(&mut self) -> ParseResult<bool> {
         if let Some(token) = &self.current_token {
             match &token.token_type {

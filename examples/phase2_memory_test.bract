@@ -1,0 +1,71 @@
+//! Phase 2 Memory Strategy Test Program
+//! Testing all revolutionary features in Bract
+
+// Import basic functionality
+mod memory_test {
+    // Test @memory annotation
+    @memory(strategy = "stack", size_hint = 1024)
+    fn stack_allocation() -> i32 {
+        let value = 42;
+        value
+    }
+    
+    // Test @performance annotation
+    @performance(max_cost = 500, max_memory = 2048)
+    fn guaranteed_performance(data: &[i32]) -> i32 {
+        let mut sum = 0;
+        for item in data {
+            sum = sum + *item;
+        }
+        sum
+    }
+    
+    // Test wrapper types
+    fn test_wrapper_types() {
+        // Linear pointer - move semantics
+        let linear_data: LinearPtr<i32> = LinearPtr::new(100);
+        
+        // Smart pointer - reference counting
+        let shared_data: SmartPtr<String> = SmartPtr::new("Hello Bract");
+        
+        // Region pointer - region allocation
+        let region_data: RegionPtr<[i32; 10]> = RegionPtr::new([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    }
+    
+    // Test memory and performance together
+    @memory(strategy = "linear")
+    @performance(max_cost = 200, max_memory = 1024)
+    pub fn hybrid_function(buffer: LinearPtr<[u8; 512]>) -> LinearPtr<[u8; 512]> {
+        // Process buffer with guaranteed performance
+        buffer
+    }
+}
+
+// Test region blocks
+region temp_processing {
+    let data = compute_data();
+    let result = process_data(data);
+    export_result(result);
+}
+
+// Main function demonstrating all features
+@performance(max_cost = 1000, max_memory = 4096)
+fn main() -> i32 {
+    // Stack allocation - zero cost
+    let stack_result = memory_test::stack_allocation();
+    
+    // Performance guaranteed computation
+    let numbers = [1, 2, 3, 4, 5];
+    let sum = memory_test::guaranteed_performance(&numbers);
+    
+    // Test wrapper types
+    memory_test::test_wrapper_types();
+    
+    // Return success
+    0
+}
+
+// Helper functions (simplified implementations)
+fn compute_data() -> i32 { 42 }
+fn process_data(data: i32) -> i32 { data * 2 }
+fn export_result(result: i32) { }

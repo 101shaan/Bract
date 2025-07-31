@@ -1,0 +1,89 @@
+// Comprehensive Performance Benchmark Suite
+// Validates Bract's memory strategies against real-world workloads
+
+// Benchmark 1: Array Processing with Different Strategies
+@performance(max_cost = 5000, max_memory = 16384)
+fn benchmark_array_processing_stack() -> i32 {
+    let data = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    let mut sum = 0;
+    let mut product = 1;
+    
+    for i in 0..10 {
+        sum = sum + data[i];
+        product = product * data[i];
+    }
+    
+    sum + product % 1000
+}
+
+@memory(strategy = "linear")
+@performance(max_cost = 6000, max_memory = 32768)
+fn benchmark_buffer_processing(size: i32) -> i32 {
+    let mut result = 0;
+    for i in 0..size {
+        result = result + i * i;
+    }
+    result
+}
+
+// Benchmark 2: Complex Data Structure Manipulation
+@memory(strategy = "region", region_size = 65536)
+fn benchmark_complex_computation() -> i32 {
+    region computation_space {
+        let mut values: RegionPtr<[i32; 100]> = RegionPtr::new([0; 100]);
+        
+        // Fill with computed values  
+        for i in 0..100 {
+            values[i] = i * i + i * 2 + 1;
+        }
+        
+        // Compute result
+        let mut sum = 0;
+        for i in 0..100 {
+            if values[i] % 2 == 0 {
+                sum = sum + values[i];
+            }
+        }
+        
+        sum
+    }
+}
+
+// Benchmark 3: Function Call Overhead  
+@performance(max_cost = 1000, max_memory = 1024)
+fn compute_fibonacci(n: i32) -> i32 {
+    if n <= 1 {
+        n
+    } else {
+        compute_fibonacci(n - 1) + compute_fibonacci(n - 2)
+    }
+}
+
+@performance(max_cost = 500, max_memory = 512)
+fn simple_arithmetic(a: i32, b: i32, c: i32) -> i32 {
+    let temp1 = a * b;
+    let temp2 = temp1 + c;
+    let temp3 = temp2 * 2;
+    temp3 - a
+}
+
+// Benchmark 4: Mixed Strategy Performance Test
+fn mixed_strategy_workload() -> i32 {
+    let stack_result = benchmark_array_processing_stack();
+    let linear_result = benchmark_buffer_processing(50);
+    let region_result = benchmark_complex_computation();
+    let fib_result = compute_fibonacci(10);
+    let arith_result = simple_arithmetic(5, 10, 15);
+    
+    stack_result + linear_result + region_result + fib_result + arith_result
+}
+
+// Main benchmark runner
+fn main() -> i32 {
+    let result1 = benchmark_array_processing_stack();
+    let result2 = benchmark_buffer_processing(100);
+    let result3 = benchmark_complex_computation();
+    let result4 = mixed_strategy_workload();
+    
+    result1 + result2 + result3 + result4
+}

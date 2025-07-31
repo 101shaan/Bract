@@ -10,7 +10,7 @@
 //! This allows for high-level optimizations before final code generation.
 
 use crate::ast::{InternedString, Span, MemoryStrategy, Ownership, LifetimeId};
-use cranelift_codegen::ir::{Type as ClifType, Value as ClifValue};
+use cranelift_codegen::ir::Type as ClifType;
 use std::collections::HashMap;
 use std::fmt;
 

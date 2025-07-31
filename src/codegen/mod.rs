@@ -37,6 +37,7 @@ pub struct CodegenPipeline {
     /// Lowering pipeline for AST → Cranelift IR
     lowering_pipeline: lowering::LoweringPipeline,
     /// Cranelift code generator
+    #[allow(dead_code)]
     cranelift_generator: cranelift::CraneliftCodeGenerator,
 }
 

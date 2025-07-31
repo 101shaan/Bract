@@ -246,16 +246,20 @@ pub struct OwnershipTracker {
 
 #[derive(Debug, Clone)]
 pub struct OwnershipState {
+    #[allow(dead_code)]
     ownership: Ownership,
     moved: bool,
     borrowed: bool,
+    #[allow(dead_code)]
     lifetime: Option<LifetimeId>,
 }
 
 #[derive(Debug, Clone)]
 pub struct BorrowInfo {
     is_mutable: bool,
+    #[allow(dead_code)]
     lifetime: LifetimeId,
+    #[allow(dead_code)]
     span: Span,
 }
 
@@ -432,7 +436,7 @@ impl TypeSystem {
     }
     
     /// Infer optimal memory strategy for a type
-    pub fn infer_memory_strategy(&mut self, ty: &Type, usage_context: &UsageContext) -> MemoryStrategy {
+    pub fn infer_memory_strategy(&mut self, _ty: &Type, usage_context: &UsageContext) -> MemoryStrategy {
         // Analyze usage patterns to determine optimal strategy
         match usage_context {
             UsageContext::ShortLived => MemoryStrategy::Stack,
@@ -712,6 +716,9 @@ impl TypeChecker {
             let arg_type = self.check_expr(arg)?;
             total_cost += arg_type.allocation_cost() as u64;
         }
+        
+        // TODO: Implement performance contract checking with total_cost
+        let _ = total_cost; // Suppress warning until contract checking is implemented
         
         // Check performance contract for function calls
         self.type_system.check_performance_contract(

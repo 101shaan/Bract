@@ -155,7 +155,7 @@ impl AstToBirLowerer {
         
         // Lower parameters to BIR values
         let mut bir_params = Vec::new();
-        for (i, param) in params.iter().enumerate() {
+        for (_i, param) in params.iter().enumerate() {
             let param_id = self.next_value_id;
             self.next_value_id += 1;
             
@@ -246,7 +246,7 @@ impl AstToBirLowerer {
                 self.lower_literal(literal, *span, block)?
             }
             
-            Expr::Identifier { name, span } => {
+            Expr::Identifier { name, span: _ } => {
                 if let Some(&value_id) = self.symbol_table.get(name) {
                     value_id
                 } else {
@@ -295,7 +295,7 @@ impl AstToBirLowerer {
         &mut self,
         literal: &Literal,
         span: Span,
-        block: &mut BIRBasicBlock,
+        _block: &mut BIRBasicBlock,
     ) -> LoweringResult<BIRValueId> {
         let value_id = self.next_value_id;
         self.next_value_id += 1;
@@ -330,7 +330,7 @@ impl AstToBirLowerer {
             }
         };
         
-        let value = BIRValue::new(value_id, bir_type, ownership, span);
+        let _value = BIRValue::new(value_id, bir_type, ownership, span);
         
         // For literals, we don't need explicit instructions in most cases
         // The value represents the compile-time constant
@@ -451,7 +451,7 @@ impl AstToBirLowerer {
     /// Lower a function call expression
     fn lower_call_expr(
         &mut self,
-        callee: &Expr,
+        _callee: &Expr,
         args: &[Expr],
         span: Span,
         block: &mut BIRBasicBlock,
@@ -669,10 +669,12 @@ impl AstToBirLowerer {
 /// Bract IR to Cranelift IR lowerer with memory management integration
 pub struct BirToClifLowerer {
     /// Cranelift context
+    #[allow(dead_code)]
     cranelift_context: ClifContext,
     /// Function builder context
     builder_context: FunctionBuilderContext,
     /// Value mapping from BIR to Cranelift
+    #[allow(dead_code)]
     value_map: HashMap<BIRValueId, cranelift_codegen::ir::Value>,
     /// Block mapping from BIR to Cranelift
     block_map: HashMap<BIRBlockId, cranelift_codegen::ir::Block>,
@@ -734,7 +736,7 @@ impl BirToClifLowerer {
             let clif_block = self.block_map[&bir_block.id];
             builder.switch_to_block(clif_block);
             
-            for instruction in &bir_block.instructions {
+            for _instruction in &bir_block.instructions {
                 // TODO: Implement instruction lowering
                 // self.lower_instruction(instruction, &mut builder)?;
             }
@@ -747,6 +749,7 @@ impl BirToClifLowerer {
     }
     
     /// Lower a BIR instruction to Cranelift
+    #[allow(dead_code)]
     fn lower_instruction(
         &mut self,
         instruction: &BIRInstruction,

@@ -6,11 +6,12 @@
 //! - Phase 3: Backend & Performance (Cranelift, debug info, optimization)
 //! - Phase 4: Developer Tooling (LSP, formatter, REPL)
 
-use bract::lexer::Lexer;
+// use bract::lexer::Lexer;  // Currently unused
 use bract::parser::Parser;
-use bract::semantic::{SemanticAnalyzer, OwnershipAnalyzer, EscapeAnalyzer};
+use bract::semantic::{SemanticAnalyzer, OwnershipAnalyzer, EscapeAnalyzer, SymbolTable};
 use bract::codegen::CodegenPipeline;
 use bract::ast::*;
+use bract::parser::StringInterner;
 
 /// **PHASE 1 TESTS: Parser & AST System**
 #[cfg(test)]
@@ -240,7 +241,10 @@ mod phase3_backend_tests {
         let mut parser = Parser::new(source, 0).expect("Parser creation failed");
         let module = parser.parse_module().expect("Parsing failed");
         
-        let mut pipeline = CodegenPipeline::new();
+        // Create required dependencies
+        let symbol_table = SymbolTable::new();
+        let interner = StringInterner::new();
+        let mut pipeline = CodegenPipeline::new(symbol_table, interner).expect("Pipeline creation failed");
         let result = pipeline.compile_module(&module);
         
         // Should compile to some form of output
@@ -336,8 +340,8 @@ mod integration_tests {
         let mut semantic = SemanticAnalyzer::new();
         let result = semantic.analyze(&module);
         
-        // Should complete semantic analysis
-        assert!(result.is_ok() || semantic.errors().len() < 10);
+        // Should complete semantic analysis with minimal errors
+        assert!(result.errors.len() < 10);
     }
     
     #[test]

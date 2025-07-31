@@ -100,9 +100,13 @@ pub struct AllocationResult {
 /// Runtime function references for memory operations
 #[derive(Debug, Clone)]
 struct RuntimeFunctions {
+    #[allow(dead_code)]
     malloc: FuncId,
+    #[allow(dead_code)]
     free: FuncId,
+    #[allow(dead_code)]
     arc_inc: FuncId,
+    #[allow(dead_code)]
     arc_dec: FuncId,
 }
 
@@ -1510,6 +1514,7 @@ pub struct CycleDetectionStats {
 #[derive(Debug, Clone)]
 pub struct OptimizedRegionAllocator {
     /// Memory alignment requirements (power of 2)
+    #[allow(dead_code)]
     alignment: u32,
     /// Cache line size for optimal alignment (typically 64 bytes)
     cache_line_size: u32,
@@ -1531,6 +1536,7 @@ pub struct FragmentationStats {
     /// Average fragmentation percentage
     fragmentation_percentage: f64,
     /// Largest contiguous block available
+    #[allow(dead_code)]
     largest_free_block: u64,
 }
 

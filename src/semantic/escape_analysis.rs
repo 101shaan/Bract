@@ -135,6 +135,7 @@ pub struct EscapeAnalyzer {
     /// Current position
     current_position: Position,
     /// Performance budget tracking
+    #[allow(dead_code)]
     performance_budgets: HashMap<String, u64>,
 }
 
@@ -1005,7 +1006,7 @@ impl EscapeAnalyzer {
         
         // Ensure all regions are closed
         if !self.active_regions.is_empty() {
-            for (region_name, start_pos) in &self.active_regions {
+            for (_region_name, _start_pos) in &self.active_regions {
                 // Could add warning about unclosed regions
             }
         }

@@ -1,0 +1,126 @@
+// Bract Language System Showcase
+// Demonstrates all major language features working together
+
+// Feature 1: Advanced Memory Management
+@memory(strategy = "smartptr") 
+fn create_shared_resource() -> SmartPtr<String> {
+    SmartPtr::new("Shared computation result")
+}
+
+@memory(strategy = "linear")
+@performance(max_cost = 2000, max_memory = 8192)
+fn process_linear_data(data: LinearPtr<[i32; 64]>) -> i32 {
+    let mut sum = 0;
+    for i in 0..64 {
+        sum = sum + data[i];
+    }
+    sum / 64  // average
+}
+
+// Feature 2: Region-based Allocation with Complex Logic
+@memory(strategy = "region", region_size = 32768)
+@performance(max_cost = 5000, max_memory = 32768) 
+fn advanced_matrix_computation() -> i32 {
+    region matrix_workspace {
+        // Simulate 8x8 matrix operations
+        let mut matrix: RegionPtr<[[i32; 8]; 8]> = RegionPtr::new([[0; 8]; 8]);
+        
+        // Initialize matrix with computed values
+        for row in 0..8 {
+            for col in 0..8 {
+                matrix[row][col] = row * col + row + col;
+            }
+        }
+        
+        // Compute determinant-like value (simplified)
+        let mut result = 0;
+        for i in 0..8 {
+            result = result + matrix[i][i]; // diagonal sum
+        }
+        
+        // Apply transformation
+        for row in 0..8 {
+            for col in 0..8 {
+                if matrix[row][col] % 2 == 0 {
+                    result = result + matrix[row][col];
+                } else {
+                    result = result - matrix[row][col];
+                }
+            }
+        }
+        
+        result
+    }
+}
+
+// Feature 3: Stack-optimized Algorithms  
+@performance(max_cost = 1500, max_memory = 2048)
+fn optimized_search_algorithm(target: i32) -> i32 {
+    let data = [1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31];
+    let mut low = 0;
+    let mut high = 15;
+    let mut steps = 0;
+    
+    while low <= high {
+        steps = steps + 1;
+        let mid = (low + high) / 2;
+        
+        if data[mid] == target {
+            return steps;  // Found in N steps
+        } else if data[mid] < target {
+            low = mid + 1;
+        } else {
+            high = mid - 1;
+        }
+    }
+    
+    -steps  // Not found, return negative step count
+}
+
+// Feature 4: Complex Control Flow with Memory Strategies
+fn advanced_control_flow_demo(mode: i32) -> i32 {
+    if mode == 1 {
+        // Use linear processing
+        let buffer = [10, 20, 30, 40, 50, 60, 70, 80];
+        let mut result = 0;
+        for val in buffer {
+            result = result + val * 2; 
+        }
+        result
+    } else if mode == 2 {
+        // Use region-based computation
+        advanced_matrix_computation()
+    } else if mode == 3 {
+        // Use search algorithm
+        optimized_search_algorithm(15)
+    } else {
+        // Default computation
+        let mut factorial = 1;
+        for i in 1..8 {
+            factorial = factorial * i;
+        }
+        factorial
+    }
+}
+
+// Feature 5: Comprehensive Integration Test
+fn system_integration_test() -> i32 {
+    // Test all strategies and features
+    let shared_resource = create_shared_resource(); // SmartPtr
+    let matrix_result = advanced_matrix_computation(); // Region
+    let search_result = optimized_search_algorithm(21); // Stack-optimized
+    let control_result = advanced_control_flow_demo(2); // Complex control flow
+    
+    // Combine results from all memory strategies
+    matrix_result + search_result + control_result
+}
+
+// Main system demonstration
+fn main() -> i32 {
+    let test1 = advanced_matrix_computation();
+    let test2 = optimized_search_algorithm(13);
+    let test3 = advanced_control_flow_demo(1);
+    let test4 = system_integration_test();
+    
+    test1 + test2 + test3 + test4
+}

@@ -1,0 +1,45 @@
+// Comprehensive Phase 3 Validation Test
+// Tests all core language features working together
+
+// Test 1: Basic stack allocation with performance contracts
+@performance(max_cost = 100, max_memory = 512)
+fn test_basic_math(a: i32, b: i32) -> i32 {
+    let result = a + b * 2;
+    result
+}
+
+// Test 2: Function calls and control flow
+fn test_control_flow(n: i32) -> i32 {
+    if n > 0 {
+        test_basic_math(n, 5) 
+    } else {
+        0
+    }
+}
+
+// Test 3: Arrays and loops
+fn test_array_processing() -> i32 {
+    let data = [10, 20, 30, 40, 50];
+    let mut sum = 0;
+    for i in 0..5 {
+        sum = sum + data[i];
+    }
+    sum
+}
+
+// Test 4: Memory strategy validation (simpler version)  
+@memory(strategy = "stack")
+fn test_memory_strategy() -> i32 {
+    let value = 42;
+    value * 2
+}
+
+// Main function testing integration
+fn main() -> i32 {
+    let test1 = test_basic_math(10, 5);      // Should be 20
+    let test2 = test_control_flow(3);        // Should be 13  
+    let test3 = test_array_processing();     // Should be 150
+    let test4 = test_memory_strategy();      // Should be 84
+    
+    test1 + test2 + test3 + test4            // Should be 267
+}

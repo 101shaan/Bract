@@ -1,0 +1,57 @@
+// Memory Strategy Performance Benchmark
+// Tests real-world usage patterns of Bract's 5 memory strategies
+
+@performance(max_cost = 1000, max_memory = 4096)
+fn benchmark_stack_allocation() -> i32 {
+    let numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    let mut sum = 0;
+    for i in 0..10 {
+        sum = sum + numbers[i];
+    }
+    sum
+}
+
+@memory(strategy = "linear")
+@performance(max_cost = 2000, max_memory = 8192)
+fn benchmark_linear_processing(data: LinearPtr<[i32; 100]>) -> i32 {
+    let mut result = 0;
+    for i in 0..100 {
+        result = result + data[i];
+    }
+    result
+}
+
+@memory(strategy = "smartptr")
+fn benchmark_shared_data() -> SmartPtr<String> {
+    let shared_msg = SmartPtr::new("Performance test data");
+    shared_msg
+}
+
+@memory(strategy = "region", region_size = 16384)
+fn benchmark_region_allocation() -> i32 {
+    region temp_workspace {
+        let buffer: RegionPtr<[u8; 1024]> = RegionPtr::new([0; 1024]);
+        let mut checksum = 0;
+        for i in 0..1024 {
+            checksum = checksum + buffer[i] as i32;
+        }
+        checksum
+    }
+}
+
+// Test mixed strategy usage in single function
+fn mixed_strategy_test() -> i32 {
+    let stack_val = benchmark_stack_allocation();
+    let shared_data = benchmark_shared_data(); 
+    let region_result = benchmark_region_allocation();
+    
+    stack_val + region_result
+}
+
+fn main() -> i32 {
+    let result1 = benchmark_stack_allocation();
+    let result2 = benchmark_region_allocation();
+    let result3 = mixed_strategy_test();
+    
+    result1 + result2 + result3
+}
