@@ -3,6 +3,7 @@ pub mod lexer;
 pub mod parser;
 pub mod semantic;
 pub mod codegen;
+pub mod profiling;
 pub mod visitor;
 pub mod lsp;
 

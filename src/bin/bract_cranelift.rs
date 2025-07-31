@@ -13,6 +13,7 @@ use bract::{
     Parser,
     semantic::SemanticAnalyzer,
     codegen::cranelift::CraneliftCodeGenerator,
+    profiling::CycleProfiler,
 };
 use std::env;
 use std::fs;
@@ -111,16 +112,27 @@ fn main() {
         println!();
     }
     
-    if let Err(e) = compile_native(&args) {
-        eprintln!("Native compilation failed: {}", e);
-        process::exit(1);
-    }
+    let profile_result = match compile_native(&args) {
+        Ok(profile) => profile,
+        Err(e) => {
+            eprintln!("Native compilation failed: {}", e);
+            process::exit(1);
+        }
+    };
     
     if args.stats {
         println!("📊 Compilation Statistics:");
         println!("   Total time: {:?}", start_time.elapsed());
         println!("   Mode: Native machine code generation");
         println!("   Backend: Cranelift");
+        
+        if let Some(profile) = profile_result {
+            println!("🔄 Code generation cycles: {}", profile.cpu_cycles);
+            if let Some(freq_ghz) = profile.cpu_freq_ghz() {
+                println!("⚡ Estimated CPU frequency: {:.2} GHz", freq_ghz);
+            }
+            println!("📊 Cycles per microsecond: {:.1}", profile.cycles_per_microsecond());
+        }
     }
     
     if args.verbose {
@@ -131,7 +143,7 @@ fn main() {
     }
 }
 
-fn compile_native(args: &Args) -> Result<(), String> {
+fn compile_native(args: &Args) -> Result<Option<bract::profiling::ProfilingResult>, String> {
     let start_time = Instant::now();
     
     // Phase 1: Read source code
@@ -197,6 +209,8 @@ fn compile_native(args: &Args) -> Result<(), String> {
     }
     
     let codegen_start = Instant::now();
+    let mut cycle_profiler = CycleProfiler::new();
+    cycle_profiler.start();
     
     let mut code_generator = CraneliftCodeGenerator::new(symbol_table, interner)
         .map_err(|e| format!("Failed to create code generator: {}", e))?;
@@ -208,8 +222,12 @@ fn compile_native(args: &Args) -> Result<(), String> {
     let object_code = code_generator.generate(&module)
         .map_err(|e| format!("Code generation failed: {}", e))?;
     
+    let profile_result = cycle_profiler.stop();
+    
     if args.verbose {
         println!("   Generated {} bytes of object code in {:?}", object_code.len(), codegen_start.elapsed());
+        println!("📊 Detailed profiling:");
+        print!("{}", profile_result.display());
     }
     
     // Phase 5: Object file creation and linking
@@ -242,7 +260,7 @@ fn compile_native(args: &Args) -> Result<(), String> {
         println!("   Total compilation time: {:?}", start_time.elapsed());
     }
     
-    Ok(())
+    Ok(Some(profile_result))
 }
 
 fn link_executable(object_path: &PathBuf, output_path: &PathBuf, verbose: bool) -> Result<(), String> {
