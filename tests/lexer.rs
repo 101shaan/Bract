@@ -229,7 +229,7 @@ fn test_lex_performance() {
 #[test]
 fn test_lex_error_handling() {
     let invalid_sources = vec![
-        ("@", "invalid character"),
+        ("`", "invalid character"),
         ("\"unterminated", "unterminated string"),
         ("'unterminated", "unterminated character"), 
         ("/* unterminated", "unterminated comment"),
