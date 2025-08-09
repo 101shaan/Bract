@@ -101,11 +101,12 @@ The compilation process follows these stages:
    - Dead code elimination
    - **NEW**: Memory strategy-aware optimization
 
-10. **Backend Code Generation** ✅
+10. **Backend Code Generation** ✅ (Cranelift primary)
     - **Cranelift IR generation with hybrid memory management**
-    - Strategy-specific lowering
+    - Strategy-specific lowering (ongoing; e.g., struct returns WIP)
     - Performance monitoring integration
     - Target-specific optimizations
+    - Legacy C transpiler: deprecated; kept for historical reference only
 
 11. **Linking**
     - Library resolution
@@ -117,7 +118,7 @@ The compiler uses multiple IRs to progressively lower the abstraction level:
 
 - **AST**: Direct representation of source syntax **with memory strategy annotations** ✅
 - **Bract IR**: **Semantic-preserving IR with memory operations and performance modeling** ✅
-- **Cranelift IR**: **Low-level representation with hybrid memory management integration** ✅
+- **Cranelift IR**: **Low-level representation with hybrid memory management integration** ✅ (primary)
 
 ### 2.3 Pipeline Coordination
 
