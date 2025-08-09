@@ -2,6 +2,11 @@
 name = "bract"
 version = "0.1.0"
 edition = "2021"
+autobins = false
+
+[features]
+default = []
+legacy_c_codegen = []
 
 [dependencies]
 tempfile = "3.8"
@@ -22,25 +27,28 @@ cranelift-jit = "0.105"
 target-lexicon = "0.12"
 
 [[bin]]
-name = "bract_compile_simple"
-path = "src/bin/bract_compile_simple.rs"
-
-[[bin]]
-name = "bract_compile"
-path = "src/bin/bract_compile.rs"
-
-[[bin]]
 name = "bract_parse"
 path = "src/bin/bract_parse.rs"
+test = false
 
 [[bin]]
 name = "bract_lsp"
 path = "src/bin/bract_lsp.rs"
-
-[[bin]]
-name = "bract_native"
-path = "src/bin/bract_native.rs"
+test = false
 
 [[bin]]
 name = "bract_cranelift"
 path = "src/bin/bract_cranelift.rs"
+test = false
+
+[[bin]]
+name = "bract_compile"
+path = "src/bin/bract_compile.rs"
+test = false
+required-features = ["legacy_c_codegen"]
+
+[[bin]]
+name = "bract_native"
+path = "src/bin/bract_native.rs"
+test = false
+required-features = ["legacy_c_codegen"]
