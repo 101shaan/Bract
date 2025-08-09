@@ -17,8 +17,8 @@
 - ✅ Basic lexer and parser for Bract syntax
 - ✅ Memory strategy annotations (`@memory`, `@performance`)
 - ✅ AST generation and semantic analysis foundation
-- ✅ C code generation pipeline through Cranelift
-- ✅ Test suite (132/132 tests passing)
+- ✅ Native code generation via Cranelift (object emission + linking in CLI)
+- ✅ Test suite green (unit + integration; some features still WIP)
 
 **What's being worked on:**
 - 🔄 Performance optimization (currently ~7ms compilation times)
@@ -56,13 +56,10 @@ The goal is to allow different memory strategies:
 
 ## Current Capabilities
 
-### Basic Compilation Pipeline
+### Basic Compilation Pipeline (Cranelift)
 ```bash
-# Compile a Bract program to C code
-cargo run --bin bract_compile_simple -- examples/hello_world.bract
-
-# Generated C files in target/ directory
-gcc target/hello_world.c target/Bract_runtime.c -o hello_world
+# Compile a Bract program to a native executable via Cranelift
+cargo run --bin bract_cranelift -- examples/hello_world.bract -v
 ```
 
 ### Supported Syntax
@@ -124,11 +121,11 @@ Bract Source → Lexer → Parser → AST → Semantic Analysis → C Generation
 **Current pipeline:**
 - Bract syntax parsed to AST
 - Basic semantic analysis
-- AST lowered to C code via custom generator
-- C code compiled with system compiler
+- AST lowered directly to Cranelift and emitted as native object code
+- CLI links object into an executable (platform-specific)
 
 **Planned improvements:**
-- Direct native code generation
+- Richer native code generation coverage (struct returns, complex control flow)
 - Memory strategy runtime integration  
 - Performance contract verification
 - Optimization passes
@@ -165,8 +162,8 @@ cargo check               # Verify compilation
 
 **Current Reality:**
 - ~7ms compilation for basic programs (needs improvement)
-- Generated C code works but not optimized
-- Memory strategies parsed but runtime incomplete
+- Cranelift backend active; some language features not fully lowered yet (e.g., certain struct returns)
+- Memory strategies parsed but runtime/codegen integration is partial
 
 **Honest Assessment:**
 This is experimental language research. Performance claims are aspirational. Current implementation focuses on correctness over speed.
@@ -184,6 +181,6 @@ Built with:
 
 ---
 
-**Bract: Exploring the future of memory-aware systems programming.**
+**Bract: speed, safety, and an exceptional developer experience — a promise, not a compromise.**
 
 *Interested in language research? Check out the [examples](examples/) to see current capabilities.*
