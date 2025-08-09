@@ -4,7 +4,6 @@
 //! the entire compiler pipeline from source code to native code (Cranelift).
 
 pub mod lexer;
-pub mod parser;
 pub mod semantic;
 pub mod integration;
 pub mod examples;
