@@ -246,15 +246,22 @@ fn compile_native(args: &Args) -> Result<Option<bract::profiling::ProfilingResul
         println!("   Object file: {}", object_path.display());
     }
     
-    // Link to executable (platform-specific)
-    link_executable(&object_path, &args.output_file, args.verbose)?;
-    
+    // For Phase 1: Skip linking and just save object file for inspection
+    // TODO: Implement proper linking once we have a working linker
     if args.verbose {
-        println!("   Linked executable in {:?}", link_start.elapsed());
+        println!("   Skipping linking for now - object file saved as: {}", object_path.display());
+        println!("   To manually link: use your system linker with the object file");
     }
     
-    // Clean up object file
-    let _ = fs::remove_file(&object_path);
+    // Comment out linking for now
+    // link_executable(&object_path, &args.output_file, args.verbose)?;
+    
+    if args.verbose {
+        println!("   Object file generation completed in {:?}", link_start.elapsed());
+    }
+    
+    // Don't clean up object file for now - we want to inspect it
+    // let _ = fs::remove_file(&object_path);
     
     if args.verbose {
         println!("   Total compilation time: {:?}", start_time.elapsed());
@@ -279,8 +286,8 @@ fn link_executable(object_path: &PathBuf, output_path: &PathBuf, verbose: bool) 
                .arg("/INCREMENTAL:NO")   // Disable incremental linking (speed)
                .arg("/MACHINE:X64")      // Explicit target architecture
                .arg("/NODEFAULTLIB")     // No default libraries (major speed boost!)
-               .arg(object_path)
-               .arg("native_runtime.o"); // ONLY our runtime - zero external deps
+               .arg(object_path);
+               // TODO: Add minimal runtime when needed
             cmd
         } else {
             // Use Microsoft linker on Windows
@@ -294,8 +301,8 @@ fn link_executable(object_path: &PathBuf, output_path: &PathBuf, verbose: bool) 
                .arg("/INCREMENTAL:NO")   // Disable incremental linking (speed)
                .arg("/MACHINE:X64")      // Explicit target architecture
                .arg("/NODEFAULTLIB")     // No default libraries (major speed boost!)
-               .arg(object_path)
-               .arg("native_runtime.o"); // ONLY our runtime - zero external deps
+               .arg(object_path);
+               // TODO: Add minimal runtime when needed
             cmd
         }
     } else {
@@ -307,8 +314,8 @@ fn link_executable(object_path: &PathBuf, output_path: &PathBuf, verbose: bool) 
            .arg("--strip-all")          // Strip all symbols (speed)
            .arg("--build-id=none")      // No build ID (speed)
            .arg("--nostdlib")           // No standard library (major speed boost!)
-           .arg(object_path)
-           .arg("native_runtime.o");    // ONLY our runtime - zero external deps
+           .arg(object_path);
+           // TODO: Add minimal runtime when needed
         cmd
     };
     
