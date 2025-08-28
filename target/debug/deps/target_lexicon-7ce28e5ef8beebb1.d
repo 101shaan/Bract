@@ -1,0 +1,15 @@
+E:\Bract\target\debug\deps\target_lexicon-7ce28e5ef8beebb1.d: C:\Users\shaan\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\target-lexicon-0.12.16\src\lib.rs C:\Users\shaan\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\target-lexicon-0.12.16\src\data_model.rs C:\Users\shaan\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\target-lexicon-0.12.16\src\host.rs C:\Users\shaan\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\target-lexicon-0.12.16\src\parse_error.rs C:\Users\shaan\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\target-lexicon-0.12.16\src\targets.rs C:\Users\shaan\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\target-lexicon-0.12.16\src\triple.rs E:\Bract\target\debug\build\target-lexicon-9e4ed2db7e0b2457\out/host.rs
+
+E:\Bract\target\debug\deps\libtarget_lexicon-7ce28e5ef8beebb1.rlib: C:\Users\shaan\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\target-lexicon-0.12.16\src\lib.rs C:\Users\shaan\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\target-lexicon-0.12.16\src\data_model.rs C:\Users\shaan\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\target-lexicon-0.12.16\src\host.rs C:\Users\shaan\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\target-lexicon-0.12.16\src\parse_error.rs C:\Users\shaan\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\target-lexicon-0.12.16\src\targets.rs C:\Users\shaan\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\target-lexicon-0.12.16\src\triple.rs E:\Bract\target\debug\build\target-lexicon-9e4ed2db7e0b2457\out/host.rs
+
+E:\Bract\target\debug\deps\libtarget_lexicon-7ce28e5ef8beebb1.rmeta: C:\Users\shaan\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\target-lexicon-0.12.16\src\lib.rs C:\Users\shaan\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\target-lexicon-0.12.16\src\data_model.rs C:\Users\shaan\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\target-lexicon-0.12.16\src\host.rs C:\Users\shaan\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\target-lexicon-0.12.16\src\parse_error.rs C:\Users\shaan\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\target-lexicon-0.12.16\src\targets.rs C:\Users\shaan\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\target-lexicon-0.12.16\src\triple.rs E:\Bract\target\debug\build\target-lexicon-9e4ed2db7e0b2457\out/host.rs
+
+C:\Users\shaan\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\target-lexicon-0.12.16\src\lib.rs:
+C:\Users\shaan\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\target-lexicon-0.12.16\src\data_model.rs:
+C:\Users\shaan\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\target-lexicon-0.12.16\src\host.rs:
+C:\Users\shaan\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\target-lexicon-0.12.16\src\parse_error.rs:
+C:\Users\shaan\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\target-lexicon-0.12.16\src\targets.rs:
+C:\Users\shaan\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\target-lexicon-0.12.16\src\triple.rs:
+E:\Bract\target\debug\build\target-lexicon-9e4ed2db7e0b2457\out/host.rs:
+
+# env-dep:OUT_DIR=E:\\Bract\\target\\debug\\build\\target-lexicon-9e4ed2db7e0b2457\\out

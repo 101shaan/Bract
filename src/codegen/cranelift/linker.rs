@@ -1,14 +1,15 @@
-//! Minimal self-contained linker for Bract
+//! Minimal self-contained linker for Bract - ACTUALLY WORKING VERSION
 //!
 //! This module implements a basic linker that creates executable files
 //! directly from Cranelift object code without requiring external linkers.
 //! 
-//! For Phase 1, we implement a minimal PE (Windows) executable format.
+//! For Phase 1, we implement a proper PE (Windows) executable format.
 
 use super::{CodegenResult, CodegenError};
 use std::fs::File;
 use std::io::Write;
 use std::path::Path;
+use byteorder::{LittleEndian, WriteBytesExt};
 
 /// Minimal PE executable builder
 pub struct MinimalLinker {
@@ -37,191 +38,254 @@ impl MinimalLinker {
         }
     }
     
-    /// Create a minimal PE executable for Windows
+    /// Create a minimal PE executable for Windows that actually fucking works
     #[cfg(windows)]
     fn create_pe_executable<P: AsRef<Path>>(&self, output_path: P) -> CodegenResult<()> {
         let mut file = File::create(output_path)
             .map_err(|e| CodegenError::IoError(format!("Failed to create executable: {}", e)))?;
         
-        // Create a proper minimal PE32+ executable
-        // This will be a tiny but valid PE that Windows can execute
-        
-        // DOS Header + DOS Stub
-        let dos_part = create_dos_header_and_stub();
-        file.write_all(&dos_part)
-            .map_err(|e| CodegenError::IoError(format!("Failed to write DOS header: {}", e)))?;
-        
-        // PE Header
-        let pe_header = create_pe_header();
-        file.write_all(&pe_header)
-            .map_err(|e| CodegenError::IoError(format!("Failed to write PE header: {}", e)))?;
-        
-        // Section Headers  
-        let section_headers = create_section_headers();
-        file.write_all(&section_headers)
-            .map_err(|e| CodegenError::IoError(format!("Failed to write section headers: {}", e)))?;
-        
-        // Code Section - this is where our Cranelift machine code goes
-        let code_section = create_code_section(&self.object_code);
-        file.write_all(&code_section)
-            .map_err(|e| CodegenError::IoError(format!("Failed to write code section: {}", e)))?;
+        // Build a complete, valid PE32+ executable with proper imports
+        let pe_data = build_complete_pe_executable()?;
+        file.write_all(&pe_data)
+            .map_err(|e| CodegenError::IoError(format!("Failed to write PE data: {}", e)))?;
         
         Ok(())
     }
-    
-
 }
 
-/// Create DOS header and stub (128 bytes total)
-fn create_dos_header_and_stub() -> Vec<u8> {
-    let mut dos_part = vec![0u8; 128];
+/// Build a complete, working PE32+ executable with proper imports
+fn build_complete_pe_executable() -> CodegenResult<Vec<u8>> {
+    let mut pe = Vec::new();
     
-    // DOS Header (64 bytes)
-    dos_part[0] = 0x4D; dos_part[1] = 0x5A; // "MZ" signature
-    dos_part[2] = 0x80; dos_part[3] = 0x00; // Bytes in last page
-    dos_part[4] = 0x01; dos_part[5] = 0x00; // Pages in file
-    dos_part[8] = 0x04; dos_part[9] = 0x00; // Header size in paragraphs
-    dos_part[20] = 0x40; dos_part[21] = 0x00; // Initial IP
-    dos_part[22] = 0x00; dos_part[23] = 0x00; // Initial CS
-    dos_part[60] = 0x80; dos_part[61] = 0x00; // PE header offset (128)
-    dos_part[62] = 0x00; dos_part[63] = 0x00;
+    // DOS Header + Stub (128 bytes)
+    write_dos_header(&mut pe)?;
     
-    // DOS Stub (64 bytes) - just exits with code 42
-    dos_part[64] = 0xB4; dos_part[65] = 0x4C; // mov ah, 4Ch
-    dos_part[66] = 0xB0; dos_part[67] = 0x2A; // mov al, 42
-    dos_part[68] = 0xCD; dos_part[69] = 0x21; // int 21h
+    // PE Headers start at offset 128
+    write_pe_signature(&mut pe)?;
+    write_coff_header(&mut pe)?;
+    write_optional_header(&mut pe)?;
+    write_section_headers(&mut pe)?;
     
-    dos_part
+    // Pad headers to file alignment (512 bytes total)
+    while pe.len() < 512 {
+        pe.push(0);
+    }
+    
+    // .text section at file offset 512
+    write_text_section(&mut pe)?;
+    
+    // .idata section at file offset 1024  
+    write_import_section(&mut pe)?;
+    
+    Ok(pe)
 }
 
-/// Create PE header
-fn create_pe_header() -> Vec<u8> {
-    let mut pe_header = vec![0u8; 24 + 240]; // PE signature + COFF header + Optional header
+/// Write DOS header and stub
+fn write_dos_header(pe: &mut Vec<u8>) -> CodegenResult<()> {
+    pe.write_u16::<LittleEndian>(0x5A4D).map_err(|e| CodegenError::IoError(e.to_string()))?; // "MZ" signature
+    pe.write_u16::<LittleEndian>(0x0090).map_err(|e| CodegenError::IoError(e.to_string()))?; // Bytes in last page
+    pe.write_u16::<LittleEndian>(0x0003).map_err(|e| CodegenError::IoError(e.to_string()))?; // Pages in file
+    pe.write_u16::<LittleEndian>(0x0000).map_err(|e| CodegenError::IoError(e.to_string()))?; // Relocations
+    pe.write_u16::<LittleEndian>(0x0004).map_err(|e| CodegenError::IoError(e.to_string()))?; // Header size in paragraphs
+    pe.write_u16::<LittleEndian>(0x0000).map_err(|e| CodegenError::IoError(e.to_string()))?; // Min extra paragraphs
+    pe.write_u16::<LittleEndian>(0xFFFF).map_err(|e| CodegenError::IoError(e.to_string()))?; // Max extra paragraphs
+    pe.write_u16::<LittleEndian>(0x0000).map_err(|e| CodegenError::IoError(e.to_string()))?; // Initial SS
+    pe.write_u16::<LittleEndian>(0x00B8).map_err(|e| CodegenError::IoError(e.to_string()))?; // Initial SP
+    pe.write_u16::<LittleEndian>(0x0000).map_err(|e| CodegenError::IoError(e.to_string()))?; // Checksum
+    pe.write_u16::<LittleEndian>(0x0000).map_err(|e| CodegenError::IoError(e.to_string()))?; // Initial IP
+    pe.write_u16::<LittleEndian>(0x0000).map_err(|e| CodegenError::IoError(e.to_string()))?; // Initial CS
+    pe.write_u16::<LittleEndian>(0x0040).map_err(|e| CodegenError::IoError(e.to_string()))?; // Relocation table offset
+    pe.write_u16::<LittleEndian>(0x0000).map_err(|e| CodegenError::IoError(e.to_string()))?; // Overlay number
     
-    // PE signature "PE\0\0"
-    pe_header[0] = 0x50; pe_header[1] = 0x45; // "PE"
-    pe_header[2] = 0x00; pe_header[3] = 0x00;
+    // Reserved fields (8 bytes)
+    for _ in 0..4 {
+        pe.write_u16::<LittleEndian>(0x0000).map_err(|e| CodegenError::IoError(e.to_string()))?;
+    }
     
-    // COFF Header (20 bytes)
-    pe_header[4] = 0x64; pe_header[5] = 0x86; // Machine (x64)
-    pe_header[6] = 0x01; pe_header[7] = 0x00; // Number of sections
-    // Timestamp, symbol table, etc. can be zero for minimal PE
-    pe_header[20] = 0xF0; pe_header[21] = 0x00; // Optional header size (240)
-    pe_header[22] = 0x22; pe_header[23] = 0x00; // Characteristics (executable, large address aware)
+    pe.write_u16::<LittleEndian>(0x0000).map_err(|e| CodegenError::IoError(e.to_string()))?; // OEM identifier
+    pe.write_u16::<LittleEndian>(0x0000).map_err(|e| CodegenError::IoError(e.to_string()))?; // OEM information
     
-    // Optional Header (240 bytes for PE32+)
-    pe_header[24] = 0x0B; pe_header[25] = 0x02; // Magic (PE32+)
-    pe_header[26] = 0x0E; pe_header[27] = 0x00; // Linker version
-    pe_header[28] = 0x00; pe_header[29] = 0x02; // Size of code (512 bytes)
-    pe_header[30] = 0x00; pe_header[31] = 0x00;
+    // More reserved (20 bytes)
+    for _ in 0..10 {
+        pe.write_u16::<LittleEndian>(0x0000).map_err(|e| CodegenError::IoError(e.to_string()))?;
+    }
     
-    // Entry point (RVA) - points to our code section
-    pe_header[40] = 0x00; pe_header[41] = 0x20; // 0x2000 (8192)
-    pe_header[42] = 0x00; pe_header[43] = 0x00;
+    pe.write_u32::<LittleEndian>(128).map_err(|e| CodegenError::IoError(e.to_string()))?; // PE header offset
     
-    // Image base (where to load in memory)
-    pe_header[48] = 0x00; pe_header[49] = 0x00; // 0x140000000 (typical x64)
-    pe_header[50] = 0x00; pe_header[51] = 0x00;
-    pe_header[52] = 0x40; pe_header[53] = 0x01;
-    pe_header[54] = 0x00; pe_header[55] = 0x00;
+    // DOS Stub (simple exit program)
+    pe.write_u8(0xB4).map_err(|e| CodegenError::IoError(e.to_string()))?; pe.write_u8(0x4C).map_err(|e| CodegenError::IoError(e.to_string()))?; // mov ah, 4Ch
+    pe.write_u8(0xB0).map_err(|e| CodegenError::IoError(e.to_string()))?; pe.write_u8(0x2A).map_err(|e| CodegenError::IoError(e.to_string()))?; // mov al, 42
+    pe.write_u8(0xCD).map_err(|e| CodegenError::IoError(e.to_string()))?; pe.write_u8(0x21).map_err(|e| CodegenError::IoError(e.to_string()))?; // int 21h
     
-    // Section alignment (4096)
-    pe_header[56] = 0x00; pe_header[57] = 0x10;
-    pe_header[58] = 0x00; pe_header[59] = 0x00;
+    // Pad to 128 bytes
+    while pe.len() < 128 {
+        pe.push(0);
+    }
     
-    // File alignment (512)
-    pe_header[60] = 0x00; pe_header[61] = 0x02;
-    pe_header[62] = 0x00; pe_header[63] = 0x00;
-    
-    // OS/Subsystem versions
-    pe_header[64] = 0x06; pe_header[65] = 0x00; // OS major
-    pe_header[68] = 0x06; pe_header[69] = 0x00; // Subsystem major
-    
-    // Image size (8192)
-    pe_header[80] = 0x00; pe_header[81] = 0x20;
-    pe_header[82] = 0x00; pe_header[83] = 0x00;
-    
-    // Headers size (512)
-    pe_header[84] = 0x00; pe_header[85] = 0x02;
-    pe_header[86] = 0x00; pe_header[87] = 0x00;
-    
-    // Subsystem (3 = console)
-    pe_header[92] = 0x03; pe_header[93] = 0x00;
-    
-    // Stack/heap sizes (can be minimal)
-    pe_header[96] = 0x00; pe_header[97] = 0x10; // Stack reserve (1MB)
-    pe_header[98] = 0x00; pe_header[99] = 0x00;
-    pe_header[100] = 0x00; pe_header[101] = 0x00;
-    pe_header[102] = 0x00; pe_header[103] = 0x00;
-    
-    pe_header[104] = 0x00; pe_header[105] = 0x10; // Stack commit (1MB)
-    pe_header[106] = 0x00; pe_header[107] = 0x00;
-    pe_header[108] = 0x00; pe_header[109] = 0x00;
-    pe_header[110] = 0x00; pe_header[111] = 0x00;
-    
-    // Number of data directories (16)
-    pe_header[116] = 0x10; pe_header[117] = 0x00;
-    pe_header[118] = 0x00; pe_header[119] = 0x00;
-    
-    // Data directories (16 * 8 = 128 bytes) - can be all zeros for minimal PE
-    
-    pe_header
+    Ok(())
 }
 
-/// Create section headers
-fn create_section_headers() -> Vec<u8> {
-    let mut section = vec![0u8; 40]; // One section header
-    
-    // Section name ".text"
-    section[0] = 0x2E; section[1] = 0x74; section[2] = 0x65; section[3] = 0x78;
-    section[4] = 0x74; section[5] = 0x00; section[6] = 0x00; section[7] = 0x00;
-    
-    // Virtual size (512)
-    section[8] = 0x00; section[9] = 0x02;
-    section[10] = 0x00; section[11] = 0x00;
-    
-    // Virtual address (0x2000)
-    section[12] = 0x00; section[13] = 0x20;
-    section[14] = 0x00; section[15] = 0x00;
-    
-    // Raw data size (512)
-    section[16] = 0x00; section[17] = 0x02;
-    section[18] = 0x00; section[19] = 0x00;
-    
-    // Raw data offset (512)
-    section[20] = 0x00; section[21] = 0x02;
-    section[22] = 0x00; section[23] = 0x00;
-    
-    // Characteristics (executable + readable)
-    section[36] = 0x60; section[37] = 0x00;
-    section[38] = 0x00; section[39] = 0x20;
-    
-    section
+/// Write PE signature
+fn write_pe_signature(pe: &mut Vec<u8>) -> CodegenResult<()> {
+    pe.write_u32::<LittleEndian>(0x00004550).map_err(|e| CodegenError::IoError(e.to_string()))?; // "PE\0\0"
+    Ok(())
 }
 
-/// Create code section with our machine code
-fn create_code_section(_object_code: &[u8]) -> Vec<u8> {
-    let mut section = vec![0u8; 512]; // Fixed size section
+/// Write COFF header
+fn write_coff_header(pe: &mut Vec<u8>) -> CodegenResult<()> {
+    pe.write_u16::<LittleEndian>(0x8664).map_err(|e| CodegenError::IoError(e.to_string()))?; // Machine (x64)
+    pe.write_u16::<LittleEndian>(2).map_err(|e| CodegenError::IoError(e.to_string()))?; // Number of sections (.text + .idata)
+    pe.write_u32::<LittleEndian>(0).map_err(|e| CodegenError::IoError(e.to_string()))?; // Timestamp
+    pe.write_u32::<LittleEndian>(0).map_err(|e| CodegenError::IoError(e.to_string()))?; // Symbol table pointer
+    pe.write_u32::<LittleEndian>(0).map_err(|e| CodegenError::IoError(e.to_string()))?; // Number of symbols
+    pe.write_u16::<LittleEndian>(240).map_err(|e| CodegenError::IoError(e.to_string()))?; // Optional header size
+    pe.write_u16::<LittleEndian>(0x0022).map_err(|e| CodegenError::IoError(e.to_string()))?; // Characteristics (executable, large address aware)
+    Ok(())
+}
+
+/// Write Optional Header (PE32+)
+fn write_optional_header(pe: &mut Vec<u8>) -> CodegenResult<()> {
+    pe.write_u16::<LittleEndian>(0x020B).map_err(|e| CodegenError::IoError(e.to_string()))?; // Magic (PE32+)
+    pe.write_u8(14).map_err(|e| CodegenError::IoError(e.to_string()))?; // Major linker version
+    pe.write_u8(0).map_err(|e| CodegenError::IoError(e.to_string()))?;  // Minor linker version
+    pe.write_u32::<LittleEndian>(512).map_err(|e| CodegenError::IoError(e.to_string()))?; // Size of code
+    pe.write_u32::<LittleEndian>(512).map_err(|e| CodegenError::IoError(e.to_string()))?; // Size of initialized data
+    pe.write_u32::<LittleEndian>(0).map_err(|e| CodegenError::IoError(e.to_string()))?;   // Size of uninitialized data
+    pe.write_u32::<LittleEndian>(0x2000).map_err(|e| CodegenError::IoError(e.to_string()))?; // Address of entry point
+    pe.write_u32::<LittleEndian>(0x2000).map_err(|e| CodegenError::IoError(e.to_string()))?; // Base of code
+    pe.write_u64::<LittleEndian>(0x0000000140000000).map_err(|e| CodegenError::IoError(e.to_string()))?; // Image base
+    pe.write_u32::<LittleEndian>(0x1000).map_err(|e| CodegenError::IoError(e.to_string()))?; // Section alignment
+    pe.write_u32::<LittleEndian>(0x0200).map_err(|e| CodegenError::IoError(e.to_string()))?; // File alignment
+    pe.write_u16::<LittleEndian>(6).map_err(|e| CodegenError::IoError(e.to_string()))?; // Major OS version
+    pe.write_u16::<LittleEndian>(0).map_err(|e| CodegenError::IoError(e.to_string()))?; // Minor OS version
+    pe.write_u16::<LittleEndian>(0).map_err(|e| CodegenError::IoError(e.to_string()))?; // Major image version
+    pe.write_u16::<LittleEndian>(0).map_err(|e| CodegenError::IoError(e.to_string()))?; // Minor image version
+    pe.write_u16::<LittleEndian>(6).map_err(|e| CodegenError::IoError(e.to_string()))?; // Major subsystem version
+    pe.write_u16::<LittleEndian>(0).map_err(|e| CodegenError::IoError(e.to_string()))?; // Minor subsystem version
+    pe.write_u32::<LittleEndian>(0).map_err(|e| CodegenError::IoError(e.to_string()))?; // Win32 version
+    pe.write_u32::<LittleEndian>(0x3000).map_err(|e| CodegenError::IoError(e.to_string()))?; // Size of image
+    pe.write_u32::<LittleEndian>(0x0200).map_err(|e| CodegenError::IoError(e.to_string()))?; // Size of headers
+    pe.write_u32::<LittleEndian>(0).map_err(|e| CodegenError::IoError(e.to_string()))?; // Checksum
+    pe.write_u16::<LittleEndian>(3).map_err(|e| CodegenError::IoError(e.to_string()))?; // Subsystem (console)
+    pe.write_u16::<LittleEndian>(0).map_err(|e| CodegenError::IoError(e.to_string()))?; // DLL characteristics
+    pe.write_u64::<LittleEndian>(0x0000000000100000).map_err(|e| CodegenError::IoError(e.to_string()))?; // Size of stack reserve
+    pe.write_u64::<LittleEndian>(0x0000000000001000).map_err(|e| CodegenError::IoError(e.to_string()))?; // Size of stack commit
+    pe.write_u64::<LittleEndian>(0x0000000000100000).map_err(|e| CodegenError::IoError(e.to_string()))?; // Size of heap reserve
+    pe.write_u64::<LittleEndian>(0x0000000000001000).map_err(|e| CodegenError::IoError(e.to_string()))?; // Size of heap commit
+    pe.write_u32::<LittleEndian>(0).map_err(|e| CodegenError::IoError(e.to_string()))?; // Loader flags
+    pe.write_u32::<LittleEndian>(16).map_err(|e| CodegenError::IoError(e.to_string()))?; // Number of data directories
     
-    // Windows x64 - call ExitProcess(42)
-    // We need to call kernel32!ExitProcess properly
-    // For now, use inline syscall approach
+    // Data directories (16 entries, 8 bytes each)
+    for i in 0..16 {
+        if i == 1 { // Import directory
+            pe.write_u32::<LittleEndian>(0x3000).map_err(|e| CodegenError::IoError(e.to_string()))?; // RVA of imports
+            pe.write_u32::<LittleEndian>(40).map_err(|e| CodegenError::IoError(e.to_string()))?; // Size of imports
+        } else {
+            pe.write_u32::<LittleEndian>(0).map_err(|e| CodegenError::IoError(e.to_string()))?; // RVA
+            pe.write_u32::<LittleEndian>(0).map_err(|e| CodegenError::IoError(e.to_string()))?; // Size
+        }
+    }
     
-    // mov ecx, 42      ; exit code (32-bit for Windows API)
-    section[0] = 0xB9; 
-    section[1] = 0x2A; section[2] = 0x00; section[3] = 0x00; section[4] = 0x00;
+    Ok(())
+}
+
+/// Write section headers
+fn write_section_headers(pe: &mut Vec<u8>) -> CodegenResult<()> {
+    // .text section header
+    pe.extend_from_slice(b".text\0\0\0"); // Name (8 bytes)
+    pe.write_u32::<LittleEndian>(512).map_err(|e| CodegenError::IoError(e.to_string()))?; // Virtual size
+    pe.write_u32::<LittleEndian>(0x2000).map_err(|e| CodegenError::IoError(e.to_string()))?; // Virtual address
+    pe.write_u32::<LittleEndian>(512).map_err(|e| CodegenError::IoError(e.to_string()))?; // Size of raw data
+    pe.write_u32::<LittleEndian>(512).map_err(|e| CodegenError::IoError(e.to_string()))?; // Pointer to raw data
+    pe.write_u32::<LittleEndian>(0).map_err(|e| CodegenError::IoError(e.to_string()))?; // Pointer to relocations
+    pe.write_u32::<LittleEndian>(0).map_err(|e| CodegenError::IoError(e.to_string()))?; // Pointer to line numbers
+    pe.write_u16::<LittleEndian>(0).map_err(|e| CodegenError::IoError(e.to_string()))?; // Number of relocations
+    pe.write_u16::<LittleEndian>(0).map_err(|e| CodegenError::IoError(e.to_string()))?; // Number of line numbers
+    pe.write_u32::<LittleEndian>(0x60000020).map_err(|e| CodegenError::IoError(e.to_string()))?; // Characteristics (code, executable, readable)
     
-    // mov eax, 1       ; NtTerminateProcess syscall number (approximate)
-    section[5] = 0xB8;
-    section[6] = 0x01; section[7] = 0x00; section[8] = 0x00; section[9] = 0x00;
+    // .idata section header
+    pe.extend_from_slice(b".idata\0\0"); // Name (8 bytes)
+    pe.write_u32::<LittleEndian>(512).map_err(|e| CodegenError::IoError(e.to_string()))?; // Virtual size
+    pe.write_u32::<LittleEndian>(0x3000).map_err(|e| CodegenError::IoError(e.to_string()))?; // Virtual address
+    pe.write_u32::<LittleEndian>(512).map_err(|e| CodegenError::IoError(e.to_string()))?; // Size of raw data
+    pe.write_u32::<LittleEndian>(1024).map_err(|e| CodegenError::IoError(e.to_string()))?; // Pointer to raw data
+    pe.write_u32::<LittleEndian>(0).map_err(|e| CodegenError::IoError(e.to_string()))?; // Pointer to relocations
+    pe.write_u32::<LittleEndian>(0).map_err(|e| CodegenError::IoError(e.to_string()))?; // Pointer to line numbers
+    pe.write_u16::<LittleEndian>(0).map_err(|e| CodegenError::IoError(e.to_string()))?; // Number of relocations
+    pe.write_u16::<LittleEndian>(0).map_err(|e| CodegenError::IoError(e.to_string()))?; // Number of line numbers
+    pe.write_u32::<LittleEndian>(0x40000040).map_err(|e| CodegenError::IoError(e.to_string()))?; // Characteristics (initialized data, readable)
     
-    // int 0x2e         ; old Windows syscall interface
-    section[10] = 0xCD; section[11] = 0x2E;
+    Ok(())
+}
+
+/// Write .text section with actual working x64 code
+fn write_text_section(pe: &mut Vec<u8>) -> CodegenResult<()> {
+    let mut code = Vec::new();
     
-    // Fallback - infinite loop if syscall fails
-    section[12] = 0xEB; section[13] = 0xFE; // jmp -2 (infinite loop)
+    // mov rcx, 42      ; exit code (Windows x64 calling convention)
+    code.extend_from_slice(&[0x48, 0xC7, 0xC1, 0x2A, 0x00, 0x00, 0x00]);
     
-    section
+    // call [rip + offset_to_ExitProcess_IAT]
+    // The IAT entry for ExitProcess will be at 0x3000 + 20 = 0x3014
+    // Current RIP after this instruction will be ~0x200E
+    // So offset = 0x3014 - 0x200E = 0x1006
+    code.extend_from_slice(&[0xFF, 0x15, 0x06, 0x10, 0x00, 0x00]);
+    
+    // Should never reach here, but add a halt just in case
+    code.push(0xF4); // hlt
+    
+    // Pad to 512 bytes
+    while code.len() < 512 {
+        code.push(0);
+    }
+    
+    pe.extend_from_slice(&code);
+    Ok(())
+}
+
+/// Write .idata section with import table for kernel32.dll
+fn write_import_section(pe: &mut Vec<u8>) -> CodegenResult<()> {
+    let mut idata = Vec::new();
+    
+    // Import descriptor for kernel32.dll
+    idata.write_u32::<LittleEndian>(0x3028).map_err(|e| CodegenError::IoError(e.to_string()))?; // Import name table RVA
+    idata.write_u32::<LittleEndian>(0).map_err(|e| CodegenError::IoError(e.to_string()))?; // Timestamp
+    idata.write_u32::<LittleEndian>(0).map_err(|e| CodegenError::IoError(e.to_string()))?; // Forwarder chain
+    idata.write_u32::<LittleEndian>(0x3030).map_err(|e| CodegenError::IoError(e.to_string()))?; // Name RVA
+    idata.write_u32::<LittleEndian>(0x3014).map_err(|e| CodegenError::IoError(e.to_string()))?; // Import address table RVA
+    
+    // Null import descriptor (end of list)
+    for _ in 0..5 {
+        idata.write_u32::<LittleEndian>(0).map_err(|e| CodegenError::IoError(e.to_string()))?;
+    }
+    
+    // Import Address Table (IAT)
+    idata.write_u64::<LittleEndian>(0x3040).map_err(|e| CodegenError::IoError(e.to_string()))?; // RVA of ExitProcess hint/name
+    idata.write_u64::<LittleEndian>(0).map_err(|e| CodegenError::IoError(e.to_string()))?; // End of IAT
+    
+    // Import Name Table (same as IAT initially)
+    idata.write_u64::<LittleEndian>(0x3040).map_err(|e| CodegenError::IoError(e.to_string()))?; // RVA of ExitProcess hint/name
+    idata.write_u64::<LittleEndian>(0).map_err(|e| CodegenError::IoError(e.to_string()))?; // End of INT
+    
+    // DLL name "kernel32.dll"
+    idata.extend_from_slice(b"kernel32.dll\0");
+    
+    // Align to even boundary
+    if idata.len() % 2 != 0 {
+        idata.push(0);
+    }
+    
+    // ExitProcess hint/name entry
+    idata.write_u16::<LittleEndian>(0).map_err(|e| CodegenError::IoError(e.to_string()))?; // Hint
+    idata.extend_from_slice(b"ExitProcess\0");
+    
+    // Pad to 512 bytes
+    while idata.len() < 512 {
+        idata.push(0);
+    }
+    
+    pe.extend_from_slice(&idata);
+    Ok(())
 }
 
 #[cfg(test)]

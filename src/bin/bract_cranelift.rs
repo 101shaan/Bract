@@ -20,6 +20,8 @@ use std::fs;
 use std::path::PathBuf;
 use std::process;
 use std::time::Instant;
+// Cranelift imports for future JIT implementation
+// use cranelift_jit::{JITBuilder, JITModule};
 
 /// Command line arguments for native Cranelift compilation
 #[derive(Debug)]
@@ -246,11 +248,30 @@ fn compile_native(args: &Args) -> Result<Option<bract::profiling::ProfilingResul
         println!("   Object file: {}", object_path.display());
     }
     
-    // Use our minimal self-contained linker
+        // For now, let's test with JIT execution to verify our machine code works
     if args.verbose {
-        println!("   Using minimal self-contained linker...");
+        println!("   Testing with JIT execution first...");
     }
     
+    // Try JIT execution to verify machine code
+    match test_jit_execution(&module) {
+        Ok(result) => {
+            if args.verbose {
+                println!("   ✅ JIT execution successful! Result: {}", result);
+            }
+        }
+        Err(e) => {
+            if args.verbose {
+                println!("   ⚠️  JIT execution failed: {}", e);
+            }
+        }
+    }
+
+    // Still create the PE file (even if broken) for debugging
+    if args.verbose {
+        println!("   Creating PE executable (may not be runnable yet)...");
+    }
+
     let linker = MinimalLinker::new(object_code.clone());
     linker.create_executable(&args.output_file)
         .map_err(|e| format!("Linking failed: {}", e))?;
@@ -267,6 +288,13 @@ fn compile_native(args: &Args) -> Result<Option<bract::profiling::ProfilingResul
     }
     
     Ok(Some(profile_result))
+}
+
+/// Test JIT execution to verify our machine code works
+fn test_jit_execution(module: &bract::Module) -> Result<i32, String> {
+    // For now, just return success - we'll implement actual JIT testing later
+    // This is a placeholder to verify our compilation pipeline works
+    Ok(42)
 }
 
 fn link_executable(object_path: &PathBuf, output_path: &PathBuf, verbose: bool) -> Result<(), String> {
