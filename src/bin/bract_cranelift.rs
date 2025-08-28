@@ -12,7 +12,7 @@
 use bract::{
     Parser,
     semantic::SemanticAnalyzer,
-    codegen::cranelift::CraneliftCodeGenerator,
+    codegen::cranelift::{CraneliftCodeGenerator, linker::MinimalLinker},
     profiling::CycleProfiler,
 };
 use std::env;
@@ -246,18 +246,17 @@ fn compile_native(args: &Args) -> Result<Option<bract::profiling::ProfilingResul
         println!("   Object file: {}", object_path.display());
     }
     
-    // For Phase 1: Skip linking and just save object file for inspection
-    // TODO: Implement proper linking once we have a working linker
+    // Use our minimal self-contained linker
     if args.verbose {
-        println!("   Skipping linking for now - object file saved as: {}", object_path.display());
-        println!("   To manually link: use your system linker with the object file");
+        println!("   Using minimal self-contained linker...");
     }
     
-    // Comment out linking for now
-    // link_executable(&object_path, &args.output_file, args.verbose)?;
+    let linker = MinimalLinker::new(object_code.clone());
+    linker.create_executable(&args.output_file)
+        .map_err(|e| format!("Linking failed: {}", e))?;
     
     if args.verbose {
-        println!("   Object file generation completed in {:?}", link_start.elapsed());
+        println!("   Executable created in {:?}", link_start.elapsed());
     }
     
     // Don't clean up object file for now - we want to inspect it
