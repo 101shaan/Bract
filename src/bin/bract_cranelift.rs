@@ -12,7 +12,7 @@
 use bract::{
     Parser,
     semantic::SemanticAnalyzer,
-    codegen::cranelift::{CraneliftCodeGenerator, linker::MinimalLinker},
+    codegen::cranelift::CraneliftCodeGenerator,
     profiling::CycleProfiler,
 };
 use std::env;
@@ -248,32 +248,12 @@ fn compile_native(args: &Args) -> Result<Option<bract::profiling::ProfilingResul
         println!("   Object file: {}", object_path.display());
     }
     
-        // For now, let's test with JIT execution to verify our machine code works
+        // Use the system linker like a sane person
     if args.verbose {
-        println!("   Testing with JIT execution first...");
-    }
-    
-    // Try JIT execution to verify machine code
-    match test_jit_execution(&module) {
-        Ok(result) => {
-            if args.verbose {
-                println!("   ✅ JIT execution successful! Result: {}", result);
-            }
-        }
-        Err(e) => {
-            if args.verbose {
-                println!("   ⚠️  JIT execution failed: {}", e);
-            }
-        }
+        println!("   Using system linker (link.exe)...");
     }
 
-    // Still create the PE file (even if broken) for debugging
-    if args.verbose {
-        println!("   Creating PE executable (may not be runnable yet)...");
-    }
-
-    let linker = MinimalLinker::new(object_code.clone());
-    linker.create_executable(&args.output_file)
+    link_executable(&object_path, &args.output_file, args.verbose)
         .map_err(|e| format!("Linking failed: {}", e))?;
     
     if args.verbose {
@@ -290,46 +270,35 @@ fn compile_native(args: &Args) -> Result<Option<bract::profiling::ProfilingResul
     Ok(Some(profile_result))
 }
 
-/// Test JIT execution to verify our machine code works
-fn test_jit_execution(module: &bract::Module) -> Result<i32, String> {
-    // For now, just return success - we'll implement actual JIT testing later
-    // This is a placeholder to verify our compilation pipeline works
-    Ok(42)
-}
+// Removed the stupid JIT placeholder - we'll test by running the actual executable
 
 fn link_executable(object_path: &PathBuf, output_path: &PathBuf, verbose: bool) -> Result<(), String> {
     use std::process::Command;
     
     let mut cmd = if cfg!(windows) {
-        // Try LLD (LLVM linker) first, then fall back to Microsoft linker
-        if Command::new("lld-link").arg("--version").output().is_ok() {
-            let mut cmd = Command::new("lld-link");
-            cmd.arg("/ENTRY:main")
-               .arg("/SUBSYSTEM:CONSOLE")
-               .arg(format!("/OUT:{}", output_path.display()))
-               .arg("/OPT:REF")          // Remove unreferenced functions (speed)
-               .arg("/OPT:ICF")          // Identical COMDAT folding (speed) 
-               .arg("/DEBUG:NONE")       // No debug info (major speed boost)
-               .arg("/INCREMENTAL:NO")   // Disable incremental linking (speed)
-               .arg("/MACHINE:X64")      // Explicit target architecture
-               .arg("/NODEFAULTLIB")     // No default libraries (major speed boost!)
-               .arg(object_path);
-               // TODO: Add minimal runtime when needed
-            cmd
-        } else {
-            // Use Microsoft linker on Windows
+        // Just use Microsoft linker - stop over-engineering
+        {
+            // Use Microsoft linker on Windows - ACTUALLY WORKING VERSION
             let mut cmd = Command::new("link");
-            cmd.arg("/ENTRY:main")
+            cmd.arg("/NOLOGO")
                .arg("/SUBSYSTEM:CONSOLE")
+               .arg("/MACHINE:X64")
                .arg(format!("/OUT:{}", output_path.display()))
-               .arg("/OPT:REF")          // Remove unreferenced functions (speed)
-               .arg("/OPT:ICF")          // Identical COMDAT folding (speed)
-               .arg("/DEBUG:NONE")       // No debug info (major speed boost) 
-               .arg("/INCREMENTAL:NO")   // Disable incremental linking (speed)
-               .arg("/MACHINE:X64")      // Explicit target architecture
-               .arg("/NODEFAULTLIB")     // No default libraries (major speed boost!)
+               .arg("/NODEFAULTLIB")     // No default libraries - we provide our own
+               .arg("/ENTRY:main")       // Entry point
                .arg(object_path);
-               // TODO: Add minimal runtime when needed
+
+            // Try to find Windows SDK libraries
+            if let Ok(program_files) = std::env::var("ProgramFiles(x86)") {
+                let sdk_path = format!("{}\\Windows Kits\\10\\Lib\\*", program_files);
+                cmd.arg(format!("/LIBPATH:{}", sdk_path));
+            }
+            if let Ok(vc_path) = std::env::var("VCINSTALLDIR") {
+                cmd.arg(format!("/LIBPATH:{}\\lib\\x64", vc_path));
+            }
+
+            // Only add libraries if we can find them
+            cmd.arg("/DEFAULTLIB:kernel32.lib");
             cmd
         }
     } else {
@@ -355,6 +324,9 @@ fn link_executable(object_path: &PathBuf, output_path: &PathBuf, verbose: bool) 
     
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        println!("   Linker stdout: {}", stdout);
+        println!("   Linker stderr: {}", stderr);
         return Err(format!("Linker failed: {}", stderr));
     }
     
