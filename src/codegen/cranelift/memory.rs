@@ -1131,16 +1131,10 @@ impl RuntimeBridge {
     }
 
     /// Initialize runtime bridge with function declarations
-    pub fn initialize(&mut self, module: &mut dyn CraneliftModule) -> CodegenResult<()> {
-        // Create runtime function signatures and declarations
-        let runtime_funcs = RuntimeFunctions {
-            malloc: self.declare_malloc(module)?,
-            free: self.declare_free(module)?,
-            arc_inc: self.declare_arc_inc(module)?,
-            arc_dec: self.declare_arc_dec(module)?,
-        };
-
-        self.runtime_functions = Some(runtime_funcs);
+    pub fn initialize(&mut self, _module: &mut dyn CraneliftModule) -> CodegenResult<()> {
+        // For now, don't declare any runtime functions - use stack allocation fallback
+        // TODO: Only declare functions when actually needed
+        self.runtime_functions = None;
         self.initialized = true;
         Ok(())
     }

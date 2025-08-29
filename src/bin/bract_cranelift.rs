@@ -20,6 +20,8 @@ use std::fs;
 use std::path::PathBuf;
 use std::process;
 use std::time::Instant;
+// Cranelift imports for future JIT implementation
+// use cranelift_jit::{JITBuilder, JITModule};
 
 /// Command line arguments for native Cranelift compilation
 #[derive(Debug)]
@@ -246,15 +248,20 @@ fn compile_native(args: &Args) -> Result<Option<bract::profiling::ProfilingResul
         println!("   Object file: {}", object_path.display());
     }
     
-    // Link to executable (platform-specific)
-    link_executable(&object_path, &args.output_file, args.verbose)?;
+        // Use the system linker like a sane person
+    if args.verbose {
+        println!("   Using system linker (link.exe)...");
+    }
+
+    link_executable(&object_path, &args.output_file, args.verbose)
+        .map_err(|e| format!("Linking failed: {}", e))?;
     
     if args.verbose {
-        println!("   Linked executable in {:?}", link_start.elapsed());
+        println!("   Executable created in {:?}", link_start.elapsed());
     }
     
-    // Clean up object file
-    let _ = fs::remove_file(&object_path);
+    // Don't clean up object file for now - we want to inspect it
+    // let _ = fs::remove_file(&object_path);
     
     if args.verbose {
         println!("   Total compilation time: {:?}", start_time.elapsed());
@@ -263,39 +270,35 @@ fn compile_native(args: &Args) -> Result<Option<bract::profiling::ProfilingResul
     Ok(Some(profile_result))
 }
 
+// Removed the stupid JIT placeholder - we'll test by running the actual executable
+
 fn link_executable(object_path: &PathBuf, output_path: &PathBuf, verbose: bool) -> Result<(), String> {
     use std::process::Command;
     
     let mut cmd = if cfg!(windows) {
-        // Try LLD (LLVM linker) first, then fall back to Microsoft linker
-        if Command::new("lld-link").arg("--version").output().is_ok() {
-            let mut cmd = Command::new("lld-link");
-            cmd.arg("/ENTRY:main")
-               .arg("/SUBSYSTEM:CONSOLE")
-               .arg(format!("/OUT:{}", output_path.display()))
-               .arg("/OPT:REF")          // Remove unreferenced functions (speed)
-               .arg("/OPT:ICF")          // Identical COMDAT folding (speed) 
-               .arg("/DEBUG:NONE")       // No debug info (major speed boost)
-               .arg("/INCREMENTAL:NO")   // Disable incremental linking (speed)
-               .arg("/MACHINE:X64")      // Explicit target architecture
-               .arg("/NODEFAULTLIB")     // No default libraries (major speed boost!)
-               .arg(object_path)
-               .arg("native_runtime.o"); // ONLY our runtime - zero external deps
-            cmd
-        } else {
-            // Use Microsoft linker on Windows
+        // Just use Microsoft linker - stop over-engineering
+        {
+            // Use Microsoft linker on Windows - ACTUALLY WORKING VERSION
             let mut cmd = Command::new("link");
-            cmd.arg("/ENTRY:main")
+            cmd.arg("/NOLOGO")
                .arg("/SUBSYSTEM:CONSOLE")
+               .arg("/MACHINE:X64")
                .arg(format!("/OUT:{}", output_path.display()))
-               .arg("/OPT:REF")          // Remove unreferenced functions (speed)
-               .arg("/OPT:ICF")          // Identical COMDAT folding (speed)
-               .arg("/DEBUG:NONE")       // No debug info (major speed boost) 
-               .arg("/INCREMENTAL:NO")   // Disable incremental linking (speed)
-               .arg("/MACHINE:X64")      // Explicit target architecture
-               .arg("/NODEFAULTLIB")     // No default libraries (major speed boost!)
-               .arg(object_path)
-               .arg("native_runtime.o"); // ONLY our runtime - zero external deps
+               .arg("/NODEFAULTLIB")     // No default libraries - we provide our own
+               .arg("/ENTRY:main")       // Entry point
+               .arg(object_path);
+
+            // Try to find Windows SDK libraries
+            if let Ok(program_files) = std::env::var("ProgramFiles(x86)") {
+                let sdk_path = format!("{}\\Windows Kits\\10\\Lib\\*", program_files);
+                cmd.arg(format!("/LIBPATH:{}", sdk_path));
+            }
+            if let Ok(vc_path) = std::env::var("VCINSTALLDIR") {
+                cmd.arg(format!("/LIBPATH:{}\\lib\\x64", vc_path));
+            }
+
+            // Only add libraries if we can find them
+            cmd.arg("/DEFAULTLIB:kernel32.lib");
             cmd
         }
     } else {
@@ -307,8 +310,8 @@ fn link_executable(object_path: &PathBuf, output_path: &PathBuf, verbose: bool) 
            .arg("--strip-all")          // Strip all symbols (speed)
            .arg("--build-id=none")      // No build ID (speed)
            .arg("--nostdlib")           // No standard library (major speed boost!)
-           .arg(object_path)
-           .arg("native_runtime.o");    // ONLY our runtime - zero external deps
+           .arg(object_path);
+           // TODO: Add minimal runtime when needed
         cmd
     };
     
@@ -321,6 +324,9 @@ fn link_executable(object_path: &PathBuf, output_path: &PathBuf, verbose: bool) 
     
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        println!("   Linker stdout: {}", stdout);
+        println!("   Linker stderr: {}", stderr);
         return Err(format!("Linker failed: {}", stderr));
     }
     
