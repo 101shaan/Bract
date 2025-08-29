@@ -1041,7 +1041,7 @@ fn compile_function_call_with_variables(
         // Handle user-defined function calls
         _ => {
             // Get the function info from the context
-            if let Some((_func_id, signature)) = var_context.get_function(func_name) {
+            if let Some((func_id, signature)) = var_context.get_function(func_name) {
                 // Verify argument count matches signature
                 if compiled_args.len() != signature.params.len() {
                     return Err(CodegenError::InternalError(
@@ -1050,7 +1050,8 @@ fn compile_function_call_with_variables(
                     ));
                 }
 
-                // TEMPORARY: Simple inline implementation for add function
+                // For now, revert to inline implementation until we fix the module system
+                // TODO: Implement proper inter-function calls via module references
                 if func_name == "add" && compiled_args.len() == 2 {
                     // Inline add(a, b) -> a + b
                     builder.ins().iadd(compiled_args[0], compiled_args[1])

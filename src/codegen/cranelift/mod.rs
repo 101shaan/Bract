@@ -33,7 +33,6 @@ pub mod expressions;
 pub mod statements;
 pub mod memory;
 pub mod runtime;
-pub mod linker;
 
 pub use context::CraneliftContext;
 pub use memory::{BractMemoryManager, MemoryStrategy, MemoryAnnotation, parse_annotation, AllocationOptions, AllocationResult, LeakWarning, LeakSeverity, LeakType, AlignmentHint, RegionOptimizationResult, AllocationHotspot, MemoryPressure, AllocationTrend};
